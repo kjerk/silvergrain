@@ -1,0 +1,606 @@
+"""
+Physically-Based Film Grain Renderer
+
+A user-friendly Python implementation of the film grain rendering algorithm.
+Translates physically-based C++ reference code to NumPy + Numba for performance.
+
+Based on: Newson et al. film grain rendering algorithm
+"""
+
+import numpy as np
+from numba import njit, prange
+from PIL import Image
+from pathlib import Path
+from typing import Union, Tuple, Optional
+import warnings
+
+
+# ============================================================================
+# PSEUDO-RANDOM NUMBER GENERATOR (Direct translation from C++ for determinism)
+# ============================================================================
+
+@njit
+def wang_hash(seed):
+    """Wang hash for pseudo-random seed generation"""
+    seed = np.uint32(seed)
+    seed = (seed ^ np.uint32(61)) ^ (seed >> np.uint32(16))
+    seed *= np.uint32(9)
+    seed = seed ^ (seed >> np.uint32(4))
+    seed *= np.uint32(668265261)
+    seed = seed ^ (seed >> np.uint32(15))
+    return seed
+
+
+@njit
+def cellseed(x, y, offset):
+    """Generate unique seed for a cell given coordinates"""
+    period = np.uint32(65536)  # 2^16
+    x = np.uint32(x)
+    y = np.uint32(y)
+    offset = np.uint32(offset)
+    s = ((y % period) * period + (x % period)) + offset
+    if s == np.uint32(0):
+        s = np.uint32(1)
+    return s
+
+
+@njit
+def xorshift_init(seed):
+    """Initialize Xorshift PRNG state"""
+    return wang_hash(np.uint32(seed))
+
+
+@njit
+def xorshift_next(state):
+    """Xorshift algorithm - fast PRNG"""
+    state = np.uint32(state)
+    state ^= (state << np.uint32(13))
+    state ^= (state >> np.uint32(17))
+    state ^= (state << np.uint32(5))
+    return state
+
+
+@njit
+def rand_uniform_0_1(state):
+    """Generate uniform random in [0, 1]"""
+    return float(state) / 4294967295.0
+
+
+@njit
+def rand_gaussian_0_1(state_ref):
+    """Generate standard normal using Box-Muller. Returns (new_state, value)"""
+    state = state_ref[0]
+
+    # First uniform
+    state = xorshift_next(state)
+    u = rand_uniform_0_1(state)
+
+    # Second uniform
+    state = xorshift_next(state)
+    v = rand_uniform_0_1(state)
+
+    # Box-Muller transform
+    result = np.sqrt(-2.0 * np.log(u)) * np.cos(2.0 * np.pi * v)
+
+    state_ref[0] = state
+    return result
+
+
+@njit
+def rand_poisson(state_ref, lam, exp_lambda):
+    """Generate Poisson random variable. Returns (new_state, value)"""
+    state = state_ref[0]
+
+    # Get uniform
+    state = xorshift_next(state)
+    u = rand_uniform_0_1(state)
+
+    x = np.uint32(0)
+    prod = exp_lambda
+    total = prod
+
+    # Inverse transform sampling
+    max_iter = int(np.floor(10000.0 * lam))
+    while u > total and x < max_iter:
+        x += np.uint32(1)
+        prod = prod * lam / float(x)
+        total += prod
+
+    state_ref[0] = state
+    return x
+
+
+# ============================================================================
+# CORE RENDERING FUNCTIONS
+# ============================================================================
+
+@njit
+def sq_distance(x1, y1, x2, y2):
+    """Squared Euclidean distance"""
+    return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)
+
+
+@njit
+def render_pixel_v2(
+    img_in, y_out, x_out,
+    m_in, n_in, m_out, n_out,
+    offset, n_monte_carlo,
+    grain_radius, grain_sigma, sigma_filter,
+    x_a, y_a, x_b, y_b,
+    lambda_lut, exp_lambda_lut,
+    x_gaussian_list, y_gaussian_list
+):
+    """
+    Render a single pixel using Monte Carlo simulation.
+
+    This is the core of the pixel-wise algorithm - translated directly
+    from the C++ reference implementation.
+    """
+    # Constants
+    NORMAL_QUANTILE = 3.0902  # For alpha=0.999
+    MAX_GREY_LEVEL = 255
+    EPSILON_GREY_LEVEL = 0.1
+
+    grain_radius_sq = grain_radius * grain_radius
+    max_radius = grain_radius
+
+    # Log-normal parameters if we have grain size variation
+    if grain_sigma > 0.0:
+        sigma = np.sqrt(np.log((grain_sigma / grain_radius) ** 2 + 1.0))
+        sigma_sq = sigma * sigma
+        mu = np.log(grain_radius) - sigma_sq / 2.0
+        log_normal_quantile = np.exp(mu + sigma * NORMAL_QUANTILE)
+        max_radius = log_normal_quantile
+    else:
+        mu = 0.0
+        sigma = 0.0
+
+    # Cell size for spatial hashing
+    ag = 1.0 / np.ceil(1.0 / grain_radius)
+
+    # Scale factors for coordinate conversion
+    s_x = (n_out - 1) / (x_b - x_a)
+    s_y = (m_out - 1) / (y_b - y_a)
+
+    # Convert output pixel to input coordinates (sample pixel center)
+    x_in = x_a + (x_out + 0.5) * ((x_b - x_a) / n_out)
+    y_in = y_a + (y_out + 0.5) * ((y_b - y_a) / m_out)
+
+    pix_out = 0.0
+
+    # Monte Carlo loop
+    for i in range(n_monte_carlo):
+        # Apply Gaussian shift for anti-aliasing
+        x_gaussian = x_in + x_gaussian_list[i] / s_x
+        y_gaussian = y_in + y_gaussian_list[i] / s_y
+
+        # Bounding box of cells to check
+        min_x = int(np.floor((x_gaussian - max_radius) / ag))
+        max_x = int(np.floor((x_gaussian + max_radius) / ag))
+        min_y = int(np.floor((y_gaussian - max_radius) / ag))
+        max_y = int(np.floor((y_gaussian + max_radius) / ag))
+
+        pt_covered = False
+
+        # Check all cells in bounding box
+        for ncx in range(min_x, max_x + 1):
+            if pt_covered:
+                break
+            for ncy in range(min_y, max_y + 1):
+                if pt_covered:
+                    break
+
+                # Cell corner in pixel coordinates
+                cell_corner_x = ag * ncx
+                cell_corner_y = ag * ncy
+
+                # Get unique seed for this cell
+                seed = cellseed(ncx, ncy, offset)
+                state = np.array([xorshift_init(seed)], dtype=np.uint32)
+
+                # Get intensity at cell corner to determine Poisson lambda
+                ix = max(0, min(int(np.floor(cell_corner_x)), n_in - 1))
+                iy = max(0, min(int(np.floor(cell_corner_y)), m_in - 1))
+                u = img_in[iy, ix]
+
+                # Lookup precomputed lambda and exp(-lambda)
+                u_ind = int(np.floor(u * (MAX_GREY_LEVEL + EPSILON_GREY_LEVEL)))
+                u_ind = max(0, min(u_ind, MAX_GREY_LEVEL))
+                curr_lambda = lambda_lut[u_ind]
+                curr_exp_lambda = exp_lambda_lut[u_ind]
+
+                # Draw number of grains in this cell
+                n_cell = rand_poisson(state, curr_lambda, curr_exp_lambda)
+
+                # Check each grain
+                for k in range(n_cell):
+                    # Draw grain center within cell
+                    state[0] = xorshift_next(state[0])
+                    x_centre_grain = cell_corner_x + ag * rand_uniform_0_1(state[0])
+                    state[0] = xorshift_next(state[0])
+                    y_centre_grain = cell_corner_y + ag * rand_uniform_0_1(state[0])
+
+                    # Draw grain radius
+                    if grain_sigma > 0.0:
+                        # Log-normal distribution
+                        gauss_val = rand_gaussian_0_1(state)
+                        curr_radius = min(np.exp(mu + sigma * gauss_val), max_radius)
+                        curr_grain_radius_sq = curr_radius * curr_radius
+                    else:
+                        curr_grain_radius_sq = grain_radius_sq
+
+                    # Test if point is covered by this grain
+                    if sq_distance(x_centre_grain, y_centre_grain,
+                                 x_gaussian, y_gaussian) < curr_grain_radius_sq:
+                        pix_out += 1.0
+                        pt_covered = True
+                        break
+
+    return pix_out / n_monte_carlo
+
+
+@njit(parallel=True)
+def film_grain_rendering_pixel_wise(
+    img_in, grain_radius, grain_sigma, sigma_filter,
+    n_monte_carlo, seed_offset,
+    x_a, y_a, x_b, y_b, m_out, n_out
+):
+    """
+    Pixel-wise film grain rendering algorithm with parallel execution.
+
+    Uses Monte Carlo simulation to render each pixel independently,
+    enabling efficient parallelization.
+    """
+    m_in, n_in = img_in.shape
+
+    # Precompute lambda and exp(-lambda) lookup tables
+    MAX_GREY_LEVEL = 255
+    EPSILON_GREY_LEVEL = 0.1
+
+    lambda_lut = np.zeros(MAX_GREY_LEVEL + 1, dtype=np.float32)
+    exp_lambda_lut = np.zeros(MAX_GREY_LEVEL + 1, dtype=np.float32)
+
+    ag = 1.0 / np.ceil(1.0 / grain_radius)
+
+    for i in range(MAX_GREY_LEVEL + 1):
+        u = i / (MAX_GREY_LEVEL + EPSILON_GREY_LEVEL)
+        lam = -(ag * ag) / (np.pi * (grain_radius * grain_radius +
+                                     grain_sigma * grain_sigma)) * np.log(1.0 - u)
+        lambda_lut[i] = lam
+        exp_lambda_lut[i] = np.exp(-lam)
+
+    # Generate Monte Carlo translation vectors (done once, shared across pixels)
+    # Note: Using deterministic seed for reproducibility
+    np.random.seed(2016)
+    x_gaussian_list = np.random.normal(0, sigma_filter, n_monte_carlo).astype(np.float32)
+    y_gaussian_list = np.random.normal(0, sigma_filter, n_monte_carlo).astype(np.float32)
+
+    # Render output image
+    img_out = np.zeros((m_out, n_out), dtype=np.float32)
+
+    # Parallel loop over output pixels (like OpenMP in C++)
+    for i in prange(m_out):
+        for j in range(n_out):
+            img_out[i, j] = render_pixel_v2(
+                img_in, i, j,
+                m_in, n_in, m_out, n_out,
+                seed_offset, n_monte_carlo,
+                grain_radius, grain_sigma, sigma_filter,
+                x_a, y_a, x_b, y_b,
+                lambda_lut, exp_lambda_lut,
+                x_gaussian_list, y_gaussian_list
+            )
+
+    return img_out
+
+
+# ============================================================================
+# USER-FRIENDLY API
+# ============================================================================
+
+class FilmGrainRenderer:
+    """
+    User-friendly interface for physically-based film grain rendering.
+
+    This renderer uses a stochastic geometry approach (Boolean model) to
+    simulate realistic photographic grain. It models grain as random circles
+    placed according to a Poisson point process.
+
+    Parameters
+    ----------
+    grain_radius : float, default=0.1
+        Average grain radius in pixels. Smaller = finer grain.
+        Typical range: 0.05 to 0.5
+
+    grain_sigma : float, default=0.0
+        Standard deviation of grain radii (log-normal distribution).
+        0.0 = constant grain size, higher = more variation.
+        Typical range: 0.0 to 0.3 * grain_radius
+
+    sigma_filter : float, default=0.8
+        Standard deviation of Gaussian filter for anti-aliasing.
+        Higher = smoother grain appearance.
+        Typical range: 0.5 to 1.5
+
+    n_monte_carlo : int, default=800
+        Number of Monte Carlo samples per pixel.
+        Higher = better quality but slower.
+        Typical range: 100 to 2000
+
+    algorithm : str, default='pixel_wise'
+        Rendering algorithm to use.
+        Options: 'pixel_wise' (currently only option implemented)
+
+    seed : int, default=2016
+        Random seed for reproducibility
+
+    Examples
+    --------
+    >>> from PIL import Image
+    >>> renderer = FilmGrainRenderer(grain_radius=0.1)
+    >>> img = Image.open("input.png")
+    >>> output = renderer.render(img)
+    >>> output.save("output.png")
+
+    >>> # Adjust grain parameters
+    >>> renderer = FilmGrainRenderer(
+    ...     grain_radius=0.15,
+    ...     grain_sigma=0.03,
+    ...     n_monte_carlo=400
+    ... )
+    """
+
+    def __init__(
+        self,
+        grain_radius: float = 0.1,
+        grain_sigma: float = 0.0,
+        sigma_filter: float = 0.8,
+        n_monte_carlo: int = 800,
+        algorithm: str = 'pixel_wise',
+        seed: int = 2016
+    ):
+        self.grain_radius = grain_radius
+        self.grain_sigma = grain_sigma
+        self.sigma_filter = sigma_filter
+        self.n_monte_carlo = n_monte_carlo
+        self.algorithm = algorithm
+        self.seed = seed
+
+        # Validate parameters
+        if grain_radius <= 0:
+            raise ValueError("grain_radius must be positive")
+        if grain_sigma < 0:
+            raise ValueError("grain_sigma must be non-negative")
+        if sigma_filter <= 0:
+            raise ValueError("sigma_filter must be positive")
+        if n_monte_carlo < 1:
+            raise ValueError("n_monte_carlo must be at least 1")
+        if algorithm not in ['pixel_wise']:
+            raise ValueError(f"Unknown algorithm: {algorithm}")
+
+    def render(
+        self,
+        image: Union[Image.Image, np.ndarray, Path, str],
+        zoom: float = 1.0,
+        output_size: Optional[Tuple[int, int]] = None
+    ) -> Image.Image:
+        """
+        Render film grain on an image.
+
+        Parameters
+        ----------
+        image : PIL.Image, np.ndarray, Path, or str
+            Input image. Can be grayscale or RGB.
+            If path, will load automatically.
+
+        zoom : float, default=1.0
+            Output resolution multiplier.
+            2.0 = double resolution, 0.5 = half resolution
+
+        output_size : tuple of (width, height), optional
+            Explicit output size. If provided, overrides zoom.
+
+        Returns
+        -------
+        PIL.Image
+            Rendered image with film grain applied
+        """
+        # Load image if path provided
+        if isinstance(image, (Path, str)):
+            image = Image.open(image)
+
+        # Convert PIL to numpy if needed
+        if isinstance(image, Image.Image):
+            pil_image = image
+            # Convert to RGB if needed
+            if pil_image.mode not in ['L', 'RGB']:
+                pil_image = pil_image.convert('RGB')
+            image = np.array(pil_image, dtype=np.float32)
+        else:
+            pil_image = None
+
+        # Ensure float32 and normalized to [0, 1]
+        if image.dtype == np.uint8:
+            image = image.astype(np.float32) / 255.0
+        elif image.max() > 1.0:
+            warnings.warn("Image values > 1.0 detected, normalizing to [0, 1]")
+            image = image / 255.0
+
+        # Handle color vs grayscale
+        is_color = len(image.shape) == 3 and image.shape[2] == 3
+
+        if is_color:
+            # Process each channel independently
+            channels = []
+            for c in range(3):
+                rendered_channel = self._render_single_channel(
+                    image[:, :, c], zoom, output_size
+                )
+                channels.append(rendered_channel)
+
+            # Stack channels
+            output = np.stack(channels, axis=2)
+        else:
+            # Single channel
+            if len(image.shape) == 3:
+                image = image[:, :, 0]  # Extract first channel
+            output = self._render_single_channel(image, zoom, output_size)
+            output = np.stack([output] * 3, axis=2)  # Convert to RGB
+
+        # Convert back to uint8 and PIL
+        output = np.clip(output * 255.0, 0, 255).astype(np.uint8)
+        return Image.fromarray(output)
+
+    def _render_single_channel(
+        self,
+        image: np.ndarray,
+        zoom: float,
+        output_size: Optional[Tuple[int, int]]
+    ) -> np.ndarray:
+        """Render a single channel (grayscale image)"""
+        m_in, n_in = image.shape
+
+        # Determine output size
+        if output_size is not None:
+            n_out, m_out = output_size
+        else:
+            m_out = int(np.floor(zoom * m_in))
+            n_out = int(np.floor(zoom * n_in))
+
+        # Image bounds (full image by default)
+        x_a, y_a = 0.0, 0.0
+        x_b, y_b = float(n_in), float(m_in)
+
+        # Ensure float32
+        image = image.astype(np.float32)
+
+        # Call core rendering function
+        if self.algorithm == 'pixel_wise':
+            output = film_grain_rendering_pixel_wise(
+                image,
+                self.grain_radius,
+                self.grain_sigma,
+                self.sigma_filter,
+                self.n_monte_carlo,
+                self.seed,
+                x_a, y_a, x_b, y_b,
+                m_out, n_out
+            )
+        else:
+            raise NotImplementedError(f"Algorithm {self.algorithm} not yet implemented")
+
+        return output
+
+    def render_from_file(
+        self,
+        input_path: Union[Path, str],
+        output_path: Union[Path, str],
+        zoom: float = 1.0,
+        output_size: Optional[Tuple[int, int]] = None
+    ):
+        """
+        Convenience method to render from file to file.
+
+        Parameters
+        ----------
+        input_path : Path or str
+            Input image file path
+        output_path : Path or str
+            Output image file path
+        zoom : float, default=1.0
+            Output resolution multiplier
+        output_size : tuple of (width, height), optional
+            Explicit output size
+        """
+        input_path = Path(input_path)
+        output_path = Path(output_path)
+
+        print(f"Loading image from {input_path}")
+        image = Image.open(input_path)
+
+        print(f"Rendering with grain_radius={self.grain_radius}, "
+              f"n_monte_carlo={self.n_monte_carlo}")
+        output = self.render(image, zoom=zoom, output_size=output_size)
+
+        print(f"Saving to {output_path}")
+        output.save(output_path)
+        print("Done!")
+
+
+# ============================================================================
+# CONVENIENCE FUNCTIONS
+# ============================================================================
+
+def render_film_grain(
+    image: Union[Image.Image, np.ndarray, Path, str],
+    grain_radius: float = 0.1,
+    grain_sigma: float = 0.0,
+    sigma_filter: float = 0.8,
+    n_monte_carlo: int = 800,
+    zoom: float = 1.0,
+    **kwargs
+) -> Image.Image:
+    """
+    Quick function to render film grain with default settings.
+
+    This is a convenience wrapper around FilmGrainRenderer for one-off usage.
+
+    Parameters
+    ----------
+    image : PIL.Image, np.ndarray, Path, or str
+        Input image
+    grain_radius : float, default=0.1
+        Average grain radius in pixels
+    grain_sigma : float, default=0.0
+        Standard deviation of grain radii
+    sigma_filter : float, default=0.8
+        Anti-aliasing filter strength
+    n_monte_carlo : int, default=800
+        Number of Monte Carlo samples
+    zoom : float, default=1.0
+        Output resolution multiplier
+    **kwargs
+        Additional arguments passed to FilmGrainRenderer
+
+    Returns
+    -------
+    PIL.Image
+        Rendered image with film grain
+
+    Examples
+    --------
+    >>> from PIL import Image
+    >>> img = Image.open("input.png")
+    >>> output = render_film_grain(img, grain_radius=0.15)
+    >>> output.save("output.png")
+    """
+    renderer = FilmGrainRenderer(
+        grain_radius=grain_radius,
+        grain_sigma=grain_sigma,
+        sigma_filter=sigma_filter,
+        n_monte_carlo=n_monte_carlo,
+        **kwargs
+    )
+    return renderer.render(image, zoom=zoom)
+
+
+if __name__ == "__main__":
+    print("Film Grain Renderer - Numba compilation test")
+    print("=" * 60)
+
+    # Test basic functionality
+    print("Creating test renderer...")
+    renderer = FilmGrainRenderer(
+        grain_radius=0.1,
+        n_monte_carlo=100  # Low for quick test
+    )
+
+    print("Generating test image (64x64)...")
+    test_img = np.random.rand(64, 64).astype(np.float32)
+
+    print("Rendering (first run will trigger Numba JIT compilation)...")
+    result = renderer._render_single_channel(test_img, zoom=1.0, output_size=None)
+
+    print(f"Success! Output shape: {result.shape}")
+    print(f"Output range: [{result.min():.3f}, {result.max():.3f}]")
+    print("\nRenderer is ready to use!")
