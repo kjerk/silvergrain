@@ -1,14 +1,13 @@
-"""
-Example usage of the Film Grain Renderer
-
-This script demonstrates different ways to use the renderer.
-"""
-
 from pathlib import Path
 from PIL import Image
 import numpy as np
 from film_grain_renderer import FilmGrainRenderer, render_film_grain
 
+"""
+Example usage of the Film Grain Renderer
+
+This script demonstrates different ways to use the renderer.
+"""
 
 def example_1_basic():
     """Basic usage with default settings"""

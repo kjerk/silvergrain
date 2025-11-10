@@ -1,3 +1,10 @@
+import numpy as np
+from numba import njit, prange
+from PIL import Image
+from pathlib import Path
+from typing import Union, Tuple, Optional
+import warnings
+
 """
 Physically-Based Film Grain Renderer
 
@@ -7,107 +14,11 @@ Translates physically-based C++ reference code to NumPy + Numba for performance.
 Based on: Newson et al. film grain rendering algorithm
 """
 
-import numpy as np
-from numba import njit, prange
-from PIL import Image
-from pathlib import Path
-from typing import Union, Tuple, Optional
-import warnings
-
-
-# ============================================================================
-# PSEUDO-RANDOM NUMBER GENERATOR (Direct translation from C++ for determinism)
-# ============================================================================
-
 @njit
-def wang_hash(seed):
-    """Wang hash for pseudo-random seed generation"""
-    seed = np.uint32(seed)
-    seed = (seed ^ np.uint32(61)) ^ (seed >> np.uint32(16))
-    seed *= np.uint32(9)
-    seed = seed ^ (seed >> np.uint32(4))
-    seed *= np.uint32(668265261)
-    seed = seed ^ (seed >> np.uint32(15))
-    return seed
-
-
-@njit
-def cellseed(x, y, offset):
-    """Generate unique seed for a cell given coordinates"""
-    period = np.uint32(65536)  # 2^16
-    x = np.uint32(x)
-    y = np.uint32(y)
-    offset = np.uint32(offset)
-    s = ((y % period) * period + (x % period)) + offset
-    if s == np.uint32(0):
-        s = np.uint32(1)
-    return s
-
-
-@njit
-def xorshift_init(seed):
-    """Initialize Xorshift PRNG state"""
-    return wang_hash(np.uint32(seed))
-
-
-@njit
-def xorshift_next(state):
-    """Xorshift algorithm - fast PRNG"""
-    state = np.uint32(state)
-    state ^= (state << np.uint32(13))
-    state ^= (state >> np.uint32(17))
-    state ^= (state << np.uint32(5))
-    return state
-
-
-@njit
-def rand_uniform_0_1(state):
-    """Generate uniform random in [0, 1]"""
-    return float(state) / 4294967295.0
-
-
-@njit
-def rand_gaussian_0_1(state_ref):
-    """Generate standard normal using Box-Muller. Returns (new_state, value)"""
-    state = state_ref[0]
-
-    # First uniform
-    state = xorshift_next(state)
-    u = rand_uniform_0_1(state)
-
-    # Second uniform
-    state = xorshift_next(state)
-    v = rand_uniform_0_1(state)
-
-    # Box-Muller transform
-    result = np.sqrt(-2.0 * np.log(u)) * np.cos(2.0 * np.pi * v)
-
-    state_ref[0] = state
-    return result
-
-
-@njit
-def rand_poisson(state_ref, lam, exp_lambda):
-    """Generate Poisson random variable. Returns (new_state, value)"""
-    state = state_ref[0]
-
-    # Get uniform
-    state = xorshift_next(state)
-    u = rand_uniform_0_1(state)
-
-    x = np.uint32(0)
-    prod = exp_lambda
-    total = prod
-
-    # Inverse transform sampling
-    max_iter = int(np.floor(10000.0 * lam))
-    while u > total and x < max_iter:
-        x += np.uint32(1)
-        prod = prod * lam / float(x)
-        total += prod
-
-    state_ref[0] = state
-    return x
+def get_cell_seed(x, y, offset):
+    """Generate unique seed for a cell"""
+    # Simple deterministic hash from coordinates
+    return (y * 65536 + x + offset) & 0xFFFFFFFF
 
 
 # ============================================================================
@@ -127,7 +38,7 @@ def render_pixel_v2(
     offset, n_monte_carlo,
     grain_radius, grain_sigma, sigma_filter,
     x_a, y_a, x_b, y_b,
-    lambda_lut, exp_lambda_lut,
+    lambda_lut,
     x_gaussian_list, y_gaussian_list
 ):
     """
@@ -194,36 +105,33 @@ def render_pixel_v2(
                 cell_corner_x = ag * ncx
                 cell_corner_y = ag * ncy
 
-                # Get unique seed for this cell
-                seed = cellseed(ncx, ncy, offset)
-                state = np.array([xorshift_init(seed)], dtype=np.uint32)
-
                 # Get intensity at cell corner to determine Poisson lambda
                 ix = max(0, min(int(np.floor(cell_corner_x)), n_in - 1))
                 iy = max(0, min(int(np.floor(cell_corner_y)), m_in - 1))
                 u = img_in[iy, ix]
 
-                # Lookup precomputed lambda and exp(-lambda)
+                # Lookup precomputed lambda
                 u_ind = int(np.floor(u * (MAX_GREY_LEVEL + EPSILON_GREY_LEVEL)))
                 u_ind = max(0, min(u_ind, MAX_GREY_LEVEL))
                 curr_lambda = lambda_lut[u_ind]
-                curr_exp_lambda = exp_lambda_lut[u_ind]
+
+                # Seed RNG for this cell
+                seed = get_cell_seed(ncx, ncy, offset)
+                np.random.seed(seed)
 
                 # Draw number of grains in this cell
-                n_cell = rand_poisson(state, curr_lambda, curr_exp_lambda)
+                n_cell = np.random.poisson(curr_lambda)
 
                 # Check each grain
                 for k in range(n_cell):
                     # Draw grain center within cell
-                    state[0] = xorshift_next(state[0])
-                    x_centre_grain = cell_corner_x + ag * rand_uniform_0_1(state[0])
-                    state[0] = xorshift_next(state[0])
-                    y_centre_grain = cell_corner_y + ag * rand_uniform_0_1(state[0])
+                    x_centre_grain = cell_corner_x + ag * np.random.random()
+                    y_centre_grain = cell_corner_y + ag * np.random.random()
 
                     # Draw grain radius
                     if grain_sigma > 0.0:
                         # Log-normal distribution
-                        gauss_val = rand_gaussian_0_1(state)
+                        gauss_val = np.random.randn()
                         curr_radius = min(np.exp(mu + sigma * gauss_val), max_radius)
                         curr_grain_radius_sq = curr_radius * curr_radius
                     else:
@@ -253,12 +161,11 @@ def film_grain_rendering_pixel_wise(
     """
     m_in, n_in = img_in.shape
 
-    # Precompute lambda and exp(-lambda) lookup tables
+    # Precompute lambda lookup table
     MAX_GREY_LEVEL = 255
     EPSILON_GREY_LEVEL = 0.1
 
     lambda_lut = np.zeros(MAX_GREY_LEVEL + 1, dtype=np.float32)
-    exp_lambda_lut = np.zeros(MAX_GREY_LEVEL + 1, dtype=np.float32)
 
     ag = 1.0 / np.ceil(1.0 / grain_radius)
 
@@ -267,7 +174,6 @@ def film_grain_rendering_pixel_wise(
         lam = -(ag * ag) / (np.pi * (grain_radius * grain_radius +
                                      grain_sigma * grain_sigma)) * np.log(1.0 - u)
         lambda_lut[i] = lam
-        exp_lambda_lut[i] = np.exp(-lam)
 
     # Generate Monte Carlo translation vectors (done once, shared across pixels)
     # Note: Using deterministic seed for reproducibility
@@ -287,7 +193,7 @@ def film_grain_rendering_pixel_wise(
                 seed_offset, n_monte_carlo,
                 grain_radius, grain_sigma, sigma_filter,
                 x_a, y_a, x_b, y_b,
-                lambda_lut, exp_lambda_lut,
+                lambda_lut,
                 x_gaussian_list, y_gaussian_list
             )
 
