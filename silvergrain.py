@@ -6,6 +6,15 @@ from PIL import Image
 import cv2
 from film_grain_renderer import FilmGrainRenderer
 
+# Try to import GPU renderer
+try:
+    from numba import cuda
+    from film_grain_renderer_gpu import FilmGrainRendererGPU
+    GPU_AVAILABLE = cuda.is_available()
+except ImportError:
+    GPU_AVAILABLE = False
+    FilmGrainRendererGPU = None
+
 """
 SilverGrain - Film Grain Renderer CLI
 
@@ -88,10 +97,14 @@ Examples:
   # RGB mode (adds grain to each color channel independently)
   silvergrain input.jpg output.jpg --mode rgb
 
+  # Subtle grain effect (50% blend with original)
+  silvergrain input.jpg output.jpg --strength 0.5
+
 Presets:
   Intensity: fine (subtle) | medium (default) | heavy (strong)
-  Quality:   fast (~1 min) | balanced (~2-3 min) | high (~5-8 min for 1080p)
+  Quality:   fast (~1s GPU/1min CPU) | balanced (~2s GPU/3min CPU) | high (~5s GPU/8min CPU, 1080p)
   Mode:      luminance (default, preserves color) | rgb (per-channel grain)
+  Device:    auto (default, uses GPU if available) | cpu | gpu
         """
     )
 
@@ -105,8 +118,12 @@ Presets:
                         help='Quality/speed tradeoff: fast (~1 min), balanced (~2-3 min), high (~5-8 min for 1080p) (default: balanced)')
     parser.add_argument('--mode', type=str, choices=['rgb', 'luminance'], default='luminance',
                         help='Grain mode: "luminance" preserves color, "rgb" adds grain to each channel (default: luminance)')
+    parser.add_argument('--strength', type=float, default=1.0,
+                        help='Grain strength: blend between original (0.0) and full grain (1.0) (default: 1.0, range: 0.0-1.0)')
 
     # Advanced options (most users won't need these)
+    parser.add_argument('--device', type=str, choices=['auto', 'cpu', 'gpu'], default='auto',
+                        help='Device to use: auto (GPU if available), cpu, gpu (default: auto)')
     parser.add_argument('--grain-radius', type=float, help='Override grain radius (advanced, 0.05-0.25)')
     parser.add_argument('--samples', type=int, help='Override Monte Carlo samples (advanced, 100-800)')
     parser.add_argument('--grain-sigma', type=float, default=0.0, help='Grain size variation (advanced, default: 0.0)')
@@ -132,6 +149,10 @@ Presets:
     n_samples = args.samples if args.samples else quality_map[args.quality]
 
     # Validate inputs
+    if args.strength < 0.0 or args.strength > 1.0:
+        print(f"Error: --strength must be between 0.0 and 1.0, got {args.strength}", file=sys.stderr)
+        return 1
+
     input_path = Path(args.input)
     if not input_path.exists():
         print(f"Error: Input file '{args.input}' not found", file=sys.stderr)
@@ -159,21 +180,44 @@ Presets:
 
     print(f"Image size: {image.size[0]}x{image.size[1]}")
 
+    # Determine device
+    use_gpu = False
+    if args.device == 'gpu':
+        if not GPU_AVAILABLE:
+            print("Error: GPU requested but CUDA is not available", file=sys.stderr)
+            return 1
+        use_gpu = True
+    elif args.device == 'auto':
+        use_gpu = GPU_AVAILABLE
+    # else: device == 'cpu', use_gpu = False
+
     # Create renderer
     print(f"\nRendering with:")
+    print(f"  Device: {'GPU' if use_gpu else 'CPU'}")
     print(f"  Intensity: {args.intensity}")
     print(f"  Quality: {args.quality}")
     print(f"  Mode: {args.mode}")
+    if args.strength < 1.0:
+        print(f"  Strength: {args.strength:.2f} (blended with original)")
     if args.grain_radius or args.samples:
         print(f"  [Advanced overrides: grain_radius={grain_radius}, samples={n_samples}]")
 
-    renderer = FilmGrainRenderer(
-        grain_radius=grain_radius,
-        grain_sigma=args.grain_sigma,
-        sigma_filter=args.sigma_filter,
-        n_monte_carlo=n_samples,
-        seed=args.seed
-    )
+    if use_gpu:
+        renderer = FilmGrainRendererGPU(
+            grain_radius=grain_radius,
+            grain_sigma=args.grain_sigma,
+            sigma_filter=args.sigma_filter,
+            n_monte_carlo=n_samples,
+            seed=args.seed
+        )
+    else:
+        renderer = FilmGrainRenderer(
+            grain_radius=grain_radius,
+            grain_sigma=args.grain_sigma,
+            sigma_filter=args.sigma_filter,
+            n_monte_carlo=n_samples,
+            seed=args.seed
+        )
 
     # Render based on mode
     print("\nRendering...")
@@ -187,6 +231,18 @@ Presets:
         import traceback
         traceback.print_exc()
         return 1
+
+    # Blend with original if strength < 1.0
+    if args.strength < 1.0:
+        print(f"Blending at strength {args.strength:.2f}...")
+        original_array = np.array(image, dtype=np.float32)
+        output_array = np.array(output, dtype=np.float32)
+
+        stacked = np.stack([original_array, output_array])
+        weights = (1.0 - args.strength, args.strength)
+        blended = np.average(stacked, axis=0, weights=weights)
+        blended = np.clip(blended, 0, 255).astype(np.uint8)
+        output = Image.fromarray(blended)
 
     # Save output
     print(f"\nSaving to {output_path}...")
