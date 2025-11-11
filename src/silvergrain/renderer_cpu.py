@@ -22,8 +22,7 @@ def render_pixel(
 	img_in, y_out, x_out,
 	m_in, n_in, m_out, n_out,
 	offset, n_monte_carlo,
-	grain_radius, grain_sigma, sigma_filter,
-	x_a, y_a, x_b, y_b,
+	grain_radius, grain_sigma, x_a, y_a, x_b, y_b,
 	lambda_lut,
 	x_gaussian_list, y_gaussian_list
 ):
@@ -176,7 +175,7 @@ def film_grain_rendering_pixel_wise(
 				img_in, i, j,
 				m_in, n_in, m_out, n_out,
 				seed_offset, n_monte_carlo,
-				grain_radius, grain_sigma, sigma_filter,
+				grain_radius, grain_sigma,
 				x_a, y_a, x_b, y_b,
 				lambda_lut,
 				x_gaussian_list, y_gaussian_list

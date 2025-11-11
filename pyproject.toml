@@ -31,6 +31,7 @@ dependencies = [
     "numpy==2.2.6",
     "opencv-python",
     "Pillow",
+    "rich>=14.0.0",
 ]
 
 [project.optional-dependencies]

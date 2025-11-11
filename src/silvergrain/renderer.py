@@ -139,7 +139,7 @@ class FilmGrainRenderer:
 	def device(self) -> str:
 		"""Return the actual device being used ('cpu' or 'gpu')"""
 		return self._device
-
+	
 	def render(self, image: Union[Image.Image, np.ndarray, Path, str], zoom: float = 1.0, output_size: Optional[Tuple[int, int]] = None) -> Image.Image:
 		"""
 		Render film grain on an image.

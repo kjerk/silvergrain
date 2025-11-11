@@ -94,8 +94,7 @@ def sq_distance(x1, y1, x2, y2):
 def render_grain_kernel(
 	img_in, img_out,
 	m_in, n_in, m_out, n_out,
-	grain_radius, grain_sigma, sigma_filter,
-	n_monte_carlo, seed_offset,
+	grain_radius, grain_sigma, n_monte_carlo, seed_offset,
 	x_a, y_a, x_b, y_b,
 	lambda_lut,
 	x_gaussian_list, y_gaussian_list
@@ -271,8 +270,7 @@ def film_grain_rendering_gpu(
 	render_grain_kernel[blocks_per_grid, threads_per_block](
 		d_img_in, d_img_out,
 		m_in, n_in, m_out, n_out,
-		grain_radius, grain_sigma, sigma_filter,
-		n_monte_carlo, seed_offset,
+		grain_radius, grain_sigma, n_monte_carlo, seed_offset,
 		x_a, y_a, x_b, y_b,
 		d_lambda_lut,
 		d_x_gaussian, d_y_gaussian
