@@ -1,3 +1,5 @@
+# Ignore - see https://github.com/astral-sh/ruff/issues/21283
+
 cache-dir = "~/.cache/ruff"
 required-version = ">=0.12.1"
 target-version = "py311"
@@ -5,9 +7,17 @@ target-version = "py311"
 line-length = 160
 
 [format]
-quote-style = "double"
-indent-style = "tab"
 docstring-code-format = false
+indent-style = "tab"
+line-ending = "lf"
+quote-style = "preserve"
+
+[lint]
+ignore = ["E302", "E303"]
+
+[lint.isort]
+lines-after-imports = 2
+lines-between-types = 1
 
 [lint.flake8-import-conventions.aliases]
 altair = "alt"
