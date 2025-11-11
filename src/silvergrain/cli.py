@@ -6,14 +6,14 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from .renderer import FilmGrainRenderer
+from silvergrain.renderer import FilmGrainRenderer
 
 
 """
 SilverGrain CLI - Single image film grain rendering
 """
 
-def render_luminance_mode(pil_image: Image.Image, renderer) -> Image.Image:
+def render_luminance_mode(pil_image: Image.Image, renderer: FilmGrainRenderer) -> Image.Image:
 	"""
 	Render grain only on luminance channel, preserving color information.
 	"""
@@ -41,7 +41,7 @@ def render_luminance_mode(pil_image: Image.Image, renderer) -> Image.Image:
 	output = np.clip(output * 255.0, 0, 255).astype(np.uint8)
 	return Image.fromarray(output)
 
-def render_rgb_mode(pil_image: Image.Image, renderer) -> Image.Image:
+def render_rgb_mode(pil_image: Image.Image, renderer: FilmGrainRenderer) -> Image.Image:
 	"""
 	Render grain independently on each RGB channel.
 	"""
