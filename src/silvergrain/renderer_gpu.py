@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Optional, Tuple, Union
 
 import numpy as np
-from numba import cuda
 from PIL import Image
+from numba import cuda
 
 """
 GPU-Accelerated Film Grain Renderer using Numba CUDA
@@ -302,14 +302,7 @@ class FilmGrainRendererGPU:
 	Same API as FilmGrainRenderer but uses CUDA for 50-100x speedup.
 	"""
 	
-	def __init__(
-		self,
-		grain_radius: float = 0.1,
-		grain_sigma: float = 0.0,
-		sigma_filter: float = 0.8,
-		n_monte_carlo: int = 800,
-		seed: int = 2016
-	):
+	def __init__(self, grain_radius: float = 0.1, grain_sigma: float = 0.0, sigma_filter: float = 0.8, n_monte_carlo: int = 800, seed: int = 2016):
 		self.grain_radius = grain_radius
 		self.grain_sigma = grain_sigma
 		self.sigma_filter = sigma_filter
@@ -326,12 +319,7 @@ class FilmGrainRendererGPU:
 		if n_monte_carlo < 1:
 			raise ValueError("n_monte_carlo must be at least 1")
 	
-	def _render_single_channel(
-		self,
-		image: np.ndarray,
-		zoom: float,
-		output_size: Optional[Tuple[int, int]]
-	) -> np.ndarray:
+	def _render_single_channel(self, image: np.ndarray, zoom: float, output_size: Optional[Tuple[int, int]]) -> np.ndarray:
 		"""Render a single channel using GPU"""
 		m_in, n_in = image.shape
 		
@@ -363,12 +351,7 @@ class FilmGrainRendererGPU:
 		
 		return output
 	
-	def render(
-		self,
-		image: Union[Image.Image, np.ndarray, Path, str],
-		zoom: float = 1.0,
-		output_size: Optional[Tuple[int, int]] = None
-	) -> Image.Image:
+	def render(self, image: Union[Image.Image, np.ndarray, Path, str], zoom: float = 1.0, output_size: Optional[Tuple[int, int]] = None) -> Image.Image:
 		"""Render film grain on an image using GPU"""
 		# Load image if path provided
 		if isinstance(image, (Path, str)):
@@ -411,7 +394,7 @@ class FilmGrainRendererGPU:
 		output = np.clip(output * 255.0, 0, 255).astype(np.uint8)
 		return Image.fromarray(output)
 
-if __name__ == "__main__":
+def check_gpu_grain_renderer():
 	print("GPU Film Grain Renderer Test")
 	print("=" * 60)
 	
@@ -440,3 +423,7 @@ if __name__ == "__main__":
 	print(f"✓ Success! Output shape: {result.shape}")
 	print(f"  Output range: [{result.min():.3f}, {result.max():.3f}]")
 	print("\nGPU renderer is ready!")
+
+if __name__ == "__main__":
+	print('__main__ not supported in modules.')
+# check_gpu_grain_renderer()

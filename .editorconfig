@@ -1,1 +1,1 @@
-root = true[*.*]end_of_line = crcharset = utf-8[**.{py,json,js,css,xml}]indent_style = tabtab_width = 4insert_final_newline = true# Causes merge conflicts/overcommits.trim_trailing_whitespace = false[**.{yml,yaml}]indent_style = spaceindent_size = 2
+root = true[*.*]end_of_line = lfcharset = utf-8[**.{py,json,js,css,xml}]indent_style = tabtab_width = 4insert_final_newline = true# Causes merge conflicts/overcommits.trim_trailing_whitespace = false[**.{yml,yaml}]indent_style = spaceindent_size = 2

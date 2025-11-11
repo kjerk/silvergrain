@@ -16,7 +16,7 @@ quote-style = "preserve"
 ignore = ["E302", "E303"]
 
 [lint.isort]
-lines-after-imports = 2
+lines-after-imports = 1
 lines-between-types = 1
 
 [lint.flake8-import-conventions.aliases]
