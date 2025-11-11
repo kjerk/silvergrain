@@ -18,7 +18,7 @@ def sq_distance(x1, y1, x2, y2):
 	return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)
 
 @njit
-def render_pixel_v2(
+def render_pixel(
 	img_in, y_out, x_out,
 	m_in, n_in, m_out, n_out,
 	offset, n_monte_carlo,
@@ -172,7 +172,7 @@ def film_grain_rendering_pixel_wise(
 	# Parallel loop over output pixels (like OpenMP in C++)
 	for i in prange(m_out):
 		for j in range(n_out):
-			img_out[i, j] = render_pixel_v2(
+			img_out[i, j] = render_pixel(
 				img_in, i, j,
 				m_in, n_in, m_out, n_out,
 				seed_offset, n_monte_carlo,
