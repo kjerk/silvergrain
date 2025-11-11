@@ -1,10 +1,11 @@
+import math
+
+import numpy as np
+from numba import cuda
+
 """
 Test Poisson generation specifically
 """
-import numpy as np
-from numba import cuda
-import math
-
 
 @cuda.jit(device=True)
 def hash_seed(seed):
@@ -97,11 +98,11 @@ def test_poisson(lam=0.188):
     unique, counts = np.unique(flat, return_counts=True)
 
     print(f"\nGenerated {n_threads * n_samples} samples")
-    print(f"Statistics:")
+    print("Statistics:")
     print(f"  Mean: {mean:.4f} (expected {lam:.4f})")
     print(f"  Std:  {std:.4f} (expected {np.sqrt(lam):.4f})")
 
-    print(f"\nValue distribution:")
+    print("\nValue distribution:")
     for val, count in zip(unique, counts):
         pct = count / len(flat) * 100
         print(f"  {int(val)}: {count:5d} ({pct:5.1f}%)")

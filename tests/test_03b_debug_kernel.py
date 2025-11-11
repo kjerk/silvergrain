@@ -1,10 +1,11 @@
+import math
+
+import numpy as np
+from numba import cuda
+
 """
 Debug version to diagnose why GPU kernel returns zeros
 """
-import numpy as np
-from numba import cuda
-import math
-
 
 @cuda.jit(device=True)
 def hash_seed(seed):
@@ -227,7 +228,7 @@ def test_debug():
 
     # Print results for center pixel
     center_idx = (m_out // 2) * n_out + (n_out // 2)
-    print(f"\nCenter pixel (4, 4) diagnostics:")
+    print("\nCenter pixel (4, 4) diagnostics:")
     print(f"  MC iterations: {debug_output[center_idx, 0]:.0f}")
     print(f"  Cells checked: {debug_output[center_idx, 1]:.0f}")
     print(f"  Grains generated: {debug_output[center_idx, 2]:.0f}")
@@ -240,7 +241,7 @@ def test_debug():
     print(f"  Avg grains generated: {np.mean(debug_output[:, 2]):.1f}")
     print(f"  Avg coverage hits: {np.mean(debug_output[:, 3]):.1f}")
     print(f"  Avg final value: {np.mean(debug_output[:, 4]):.4f}")
-    print(f"  Expected value: ~0.5")
+    print("  Expected value: ~0.5")
 
     if np.mean(debug_output[:, 4]) > 0.01:
         print("\n✓ Kernel is producing non-zero output")

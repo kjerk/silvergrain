@@ -1,11 +1,12 @@
-"""
-Test GPU and CPU on small image with visual comparison
-"""
 import numpy as np
 from PIL import Image
+
 from silvergrain.renderer import FilmGrainRenderer
 from silvergrain.renderer_gpu import FilmGrainRendererGPU
 
+"""
+Test GPU and CPU on small image with visual comparison
+"""
 
 def create_test_image(size=64):
     """Create a test image with gradient"""
@@ -32,7 +33,7 @@ def test_small_image():
     n_monte_carlo = 100  # Low for speed
     seed = 2016
 
-    print(f"\nRendering parameters:")
+    print("\nRendering parameters:")
     print(f"  Grain radius: {grain_radius}")
     print(f"  MC samples: {n_monte_carlo}")
     print(f"  Seed: {seed}")
@@ -69,7 +70,7 @@ def test_small_image():
     mean_diff_pct = abs(cpu_mean - gpu_mean) / cpu_mean * 100 if cpu_mean > 0 else 0
     std_diff_pct = abs(cpu_std - gpu_std) / cpu_std * 100 if cpu_std > 0 else 0
 
-    print(f"\nDifferences:")
+    print("\nDifferences:")
     print(f"  Mean: {mean_diff_pct:.1f}%")
     print(f"  Std:  {std_diff_pct:.1f}%")
 

@@ -1,15 +1,18 @@
 import argparse
 import sys
 from pathlib import Path
+
+import cv2
 import numpy as np
 from PIL import Image
-import cv2
-from film_grain_renderer import FilmGrainRenderer
+
+from silvergrain.renderer import FilmGrainRenderer
 
 # Try to import GPU renderer
 try:
     from numba import cuda
-    from film_grain_renderer_gpu import FilmGrainRendererGPU
+
+    from silvergrain.renderer_gpu import FilmGrainRendererGPU
     GPU_AVAILABLE = cuda.is_available()
 except ImportError:
     GPU_AVAILABLE = False
@@ -192,7 +195,7 @@ Presets:
     # else: device == 'cpu', use_gpu = False
 
     # Create renderer
-    print(f"\nRendering with:")
+    print("\nRendering with:")
     print(f"  Device: {'GPU' if use_gpu else 'CPU'}")
     print(f"  Intensity: {args.intensity}")
     print(f"  Quality: {args.quality}")

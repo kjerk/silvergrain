@@ -1,9 +1,9 @@
-"""
-Test just the RNG functions in isolation
-"""
 import numpy as np
 from numba import cuda
 
+"""
+Test just the RNG functions in isolation
+"""
 
 @cuda.jit(device=True)
 def hash_seed(seed):
@@ -78,7 +78,7 @@ def test_uniform_rng():
     min_val = np.min(output)
     max_val = np.max(output)
 
-    print(f"\nStatistics:")
+    print("\nStatistics:")
     print(f"  Mean: {mean:.4f} (expected ~0.5)")
     print(f"  Std:  {std:.4f} (expected ~0.289)")
     print(f"  Min:  {min_val:.4f}")

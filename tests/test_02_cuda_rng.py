@@ -1,10 +1,12 @@
+import math
+
+import numpy as np
+from numba import cuda
+from numba.cuda.random import create_xoroshiro128p_states, xoroshiro128p_normal_float32, xoroshiro128p_uniform_float32
+
 """
 Test CUDA-compatible RNG functions against NumPy equivalents
 """
-import numpy as np
-from numba import cuda
-from numba.cuda.random import create_xoroshiro128p_states, xoroshiro128p_uniform_float32, xoroshiro128p_normal_float32
-import math
 
 # CUDA device function for Poisson sampling
 # Using Knuth's algorithm for small lambda, Gaussian approximation for large lambda
@@ -80,7 +82,7 @@ def test_cuda_uniform(n_samples=10000, seed=42):
 
     print(f"NumPy:  mean={np_mean:.4f}, std={np_std:.4f}")
     print(f"CUDA:   mean={cuda_mean:.4f}, std={cuda_std:.4f}")
-    print(f"Expected: mean≈0.5, std≈0.2887")
+    print("Expected: mean≈0.5, std≈0.2887")
 
     # Check if within reasonable bounds
     mean_ok = abs(cuda_mean - 0.5) < 0.01
@@ -121,7 +123,7 @@ def test_cuda_normal(n_samples=10000, seed=42):
 
     print(f"NumPy:  mean={np_mean:.4f}, std={np_std:.4f}")
     print(f"CUDA:   mean={cuda_mean:.4f}, std={cuda_std:.4f}")
-    print(f"Expected: mean≈0.0, std≈1.0")
+    print("Expected: mean≈0.0, std≈1.0")
 
     # Check if within reasonable bounds
     mean_ok = abs(cuda_mean) < 0.05

@@ -1,7 +1,8 @@
+import sys
+
 """
 Test GPU capability and Numba CUDA installation
 """
-import sys
 
 def check_gpu_capability():
     """Check if CUDA GPU is available and working"""
@@ -32,7 +33,7 @@ def check_gpu_capability():
     # Get GPU info
     try:
         gpu = cuda.get_current_device()
-        print(f"\nGPU Information:")
+        print("\nGPU Information:")
         print(f"  Name: {gpu.name.decode('utf-8')}")
         print(f"  Compute Capability: {gpu.compute_capability}")
         print(f"  Total Memory: {gpu.MAX_THREADS_PER_BLOCK} threads/block max")

@@ -1,10 +1,11 @@
+import math
+import warnings
+from pathlib import Path
+from typing import Optional, Tuple, Union
+
 import numpy as np
 from numba import cuda
-import math
 from PIL import Image
-from pathlib import Path
-from typing import Union, Tuple, Optional
-import warnings
 
 """
 GPU-Accelerated Film Grain Renderer using Numba CUDA
@@ -433,7 +434,7 @@ if __name__ == "__main__":
         print("  - numba with CUDA support")
         exit(1)
 
-    print(f"✓ CUDA available")
+    print("✓ CUDA available")
     print(f"  GPU: {cuda.get_current_device().name.decode('utf-8')}")
 
     # Quick test

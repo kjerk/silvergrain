@@ -1,11 +1,13 @@
-"""
-Benchmark GPU vs CPU performance
-"""
-import numpy as np
 import time
+
+import numpy as np
+
 from silvergrain.renderer import FilmGrainRenderer
 from silvergrain.renderer_gpu import FilmGrainRendererGPU
 
+"""
+Benchmark GPU vs CPU performance
+"""
 
 def benchmark(renderer, img, name, warmup=True):
     """Benchmark a renderer on an image"""
@@ -72,7 +74,7 @@ def run_benchmark(size, n_monte_carlo, grain_radius=0.12):
     cpu_mean = np.mean(cpu_result)
     gpu_mean = np.mean(gpu_result)
     mean_diff_pct = abs(cpu_mean - gpu_mean) / cpu_mean * 100 if cpu_mean > 0 else 0
-    print(f"\nResult verification:")
+    print("\nResult verification:")
     print(f"  CPU mean: {cpu_mean:.4f}")
     print(f"  GPU mean: {gpu_mean:.4f}")
     print(f"  Difference: {mean_diff_pct:.1f}%")

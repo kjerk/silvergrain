@@ -1,13 +1,14 @@
+import numpy as np
+
+from silvergrain.renderer import FilmGrainRenderer
+from silvergrain.renderer_gpu import FilmGrainRendererGPU
+
 """
 Test that GPU and CPU produce similar results for single pixels.
 
 Note: Results won't be identical due to different RNG implementations,
 but should be statistically similar.
 """
-import numpy as np
-from silvergrain.renderer import FilmGrainRenderer
-from silvergrain.renderer_gpu import FilmGrainRendererGPU
-
 
 def test_single_pixel(intensity=0.5, grain_radius=0.12, n_monte_carlo=200):
     """
@@ -22,7 +23,7 @@ def test_single_pixel(intensity=0.5, grain_radius=0.12, n_monte_carlo=200):
     # Create test image (single constant intensity)
     img = np.full((8, 8), intensity, dtype=np.float32)
 
-    print(f"Test parameters:")
+    print("Test parameters:")
     print(f"  Input intensity: {intensity}")
     print(f"  Grain radius: {grain_radius}")
     print(f"  MC samples: {n_monte_carlo}")

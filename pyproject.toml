@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "silvergrain"
-version = "0.1.0"
+version = "0.2"
 description = "Physically-based film grain renderer image processing"
 readme = "README.md"
 requires-python = ">=3.1"
@@ -12,7 +12,7 @@ license = {text = "MIT"}
 authors = [
     {name = "SilverGrain Contributors"}
 ]
-keywords = ["film-grain", "image-processing", "data-augmentation", "machine-learning", "gpu"]
+keywords = ["film-grain", "image-processing", "gpu"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -46,8 +46,8 @@ silvergrain = "silvergrain.cli:main"
 silvergrain-batch = "silvergrain.batch:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/silvergrain"
-Issues = "https://github.com/yourusername/silvergrain/issues"
+Homepage = "https://github.com/kjerk/silvergrain"
+Issues = "https://github.com/kjerk/silvergrain/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

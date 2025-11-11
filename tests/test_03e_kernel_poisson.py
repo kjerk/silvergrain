@@ -1,10 +1,11 @@
+import math
+
+import numpy as np
+from numba import cuda
+
 """
 Debug exactly what happens when calling Poisson inside the kernel
 """
-import numpy as np
-from numba import cuda
-import math
-
 
 @cuda.jit(device=True)
 def hash_seed(seed):
@@ -128,11 +129,11 @@ def test_kernel_call():
 
     # Statistics
     mean_grains = np.mean(output)
-    print(f"\nOverall statistics:")
+    print("\nOverall statistics:")
     print(f"  Mean grains: {mean_grains:.4f} (expected {lam_value:.4f})")
 
     unique, counts = np.unique(output, return_counts=True)
-    print(f"  Distribution:")
+    print("  Distribution:")
     for val, count in zip(unique, counts):
         pct = count / len(output) * 100
         print(f"    {int(val)}: {count:3d} ({pct:5.1f}%)")

@@ -8,3 +8,11 @@ line-length = 160
 quote-style = "double"
 indent-style = "tab"
 docstring-code-format = false
+
+[lint.flake8-import-conventions.aliases]
+altair = "alt"
+"matplotlib.pyplot" = "plt"
+numpy = "numpy"
+pandas = "pandas"
+seaborn = "seaborn"
+scipy = "scipy"

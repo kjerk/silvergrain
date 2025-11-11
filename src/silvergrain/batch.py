@@ -1,11 +1,12 @@
 import argparse
 import sys
+import time
 from pathlib import Path
+from typing import List
+
+import cv2
 import numpy as np
 from PIL import Image
-import cv2
-from typing import List, Optional
-import time
 
 from .renderer import FilmGrainRenderer
 
@@ -16,6 +17,7 @@ SilverGrain Batch CLI - Batch process directories of images
 # Try to import GPU renderer
 try:
     from numba import cuda
+
     from .renderer_gpu import FilmGrainRendererGPU
     GPU_AVAILABLE = cuda.is_available()
 except ImportError:
@@ -208,7 +210,7 @@ Presets:
         use_gpu = GPU_AVAILABLE
 
     # Print configuration
-    print(f"\nProcessing with:")
+    print("\nProcessing with:")
     print(f"  Device: {'GPU' if use_gpu else 'CPU'}")
     print(f"  Intensity: {args.intensity}")
     print(f"  Quality: {args.quality}")
@@ -216,7 +218,7 @@ Presets:
     if args.strength < 1.0:
         print(f"  Strength: {args.strength:.2f}")
     if args.random_seed:
-        print(f"  Random seed per image: enabled")
+        print("  Random seed per image: enabled")
     print()
 
     # Process images

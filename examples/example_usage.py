@@ -1,7 +1,8 @@
 from pathlib import Path
-from PIL import Image
+
 import numpy as np
-from film_grain_renderer import FilmGrainRenderer, render_film_grain
+from silvergrain.renderer import FilmGrainRenderer, render_film_grain
+from PIL import Image
 
 """
 Example usage of the Film Grain Renderer
