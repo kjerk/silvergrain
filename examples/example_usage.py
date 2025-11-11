@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+
 from silvergrain.renderer import FilmGrainRenderer, render_film_grain
 
 """

@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Optional, Tuple, Union
 
 import numpy as np
-from PIL import Image
 from numba import cuda
+from PIL import Image
 
 """
 GPU-Accelerated Film Grain Renderer using Numba CUDA

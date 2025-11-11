@@ -1,6 +1,7 @@
 import time
 
 import numpy as np
+
 from silvergrain.renderer import FilmGrainRenderer
 from silvergrain.renderer_gpu import FilmGrainRendererGPU
 

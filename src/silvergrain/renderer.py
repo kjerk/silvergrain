@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import Optional, Tuple, Union
 
 import numpy as np
-from PIL import Image
 from numba import njit, prange
+from PIL import Image
 
 """
 Physically-Based Film Grain Renderer
