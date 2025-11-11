@@ -5,9 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image
-
 from silvergrain.renderer import FilmGrainRenderer
-
 
 """
 SilverGrain CLI - Single image film grain rendering
@@ -21,7 +19,7 @@ def render_luminance_mode(pil_image: Image.Image, renderer: FilmGrainRenderer) -
 	
 	if len(img_array.shape) == 2:
 		# Already grayscale
-		output = renderer._render_single_channel(img_array, zoom=1.0, output_size=None)
+		output = renderer.render_single_channel(img_array, zoom=1.0, output_size=None)
 		output = np.stack([output] * 3, axis=2)
 	else:
 		# Convert RGB to YUV
@@ -29,7 +27,7 @@ def render_luminance_mode(pil_image: Image.Image, renderer: FilmGrainRenderer) -
 		yuv = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2YUV).astype(np.float32) / 255.0
 		
 		# Render grain on Y (luminance) channel only
-		y_rendered = renderer._render_single_channel(yuv[:, :, 0], zoom=1.0, output_size=None)
+		y_rendered = renderer.render_single_channel(yuv[:, :, 0], zoom=1.0, output_size=None)
 		yuv[:, :, 0] = y_rendered
 		
 		# Convert back to RGB
@@ -49,14 +47,14 @@ def render_rgb_mode(pil_image: Image.Image, renderer: FilmGrainRenderer) -> Imag
 	
 	if len(img_array.shape) == 2:
 		# Grayscale - process once, copy to RGB
-		output = renderer._render_single_channel(img_array, zoom=1.0, output_size=None)
+		output = renderer.render_single_channel(img_array, zoom=1.0, output_size=None)
 		output = np.stack([output] * 3, axis=2)
 	else:
 		# Process each channel independently
 		channels = []
 		for c in range(3):
 			print(f"  Processing channel {c + 1}/3...")
-			rendered = renderer._render_single_channel(img_array[:, :, c], zoom=1.0, output_size=None)
+			rendered = renderer.render_single_channel(img_array[:, :, c], zoom=1.0, output_size=None)
 			channels.append(rendered)
 		output = np.stack(channels, axis=2)
 	
@@ -113,19 +111,10 @@ Presets:
 	
 	args = parser.parse_args()
 	
-	# Map user-friendly presets to technical parameters
-	intensity_map = {
-		'fine': 0.08,
-		'medium': 0.12,
-		'heavy': 0.20
-	}
-	quality_map = {
-		'fast': 100,
-		'balanced': 200,
-		'high': 400
-	}
+	# Presets for easier use
+	intensity_map = {'fine': 0.08, 'medium': 0.12, 'heavy': 0.20}
+	quality_map = {'fast': 100, 'balanced': 200, 'high': 400}
 	
-	# Use presets unless overridden
 	grain_radius = args.grain_radius if args.grain_radius else intensity_map[args.intensity]
 	n_samples = args.samples if args.samples else quality_map[args.quality]
 	
@@ -160,7 +149,7 @@ Presets:
 		image = image.convert('RGB')
 	
 	print(f"Image size: {image.size[0]}x{image.size[1]}")
-
+	
 	# Create renderer with device parameter
 	try:
 		renderer = FilmGrainRenderer(
@@ -174,17 +163,15 @@ Presets:
 	except RuntimeError as e:
 		print(f"Error: {e}", file=sys.stderr)
 		return 1
-
-	# Determine actual device being used (for display)
+	
 	device_str = args.device
 	if args.device == 'auto':
-		# Check if GPU will actually be used
-		device_str = 'GPU' if renderer._should_use_gpu() else 'CPU'
+		device_str = 'GPU' if renderer.device == 'gpu' else 'CPU'
 	elif args.device == 'gpu':
 		device_str = 'GPU'
 	else:
 		device_str = 'CPU'
-
+	
 	# Display rendering info
 	print("\nRendering with:")
 	print(f"  Device: {device_str}")

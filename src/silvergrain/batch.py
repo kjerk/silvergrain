@@ -30,24 +30,24 @@ def process_image(input_path: Path, output_path: Path, renderer, mode: str, stre
 		if mode == 'luminance':
 			# Luminance mode
 			if len(img_array.shape) == 2:
-				output_array = renderer._render_single_channel(img_array, zoom=1.0, output_size=None)
+				output_array = renderer.render_single_channel(img_array, zoom=1.0, output_size=None)
 				output_array = np.stack([output_array] * 3, axis=2)
 			else:
 				img_uint8 = (img_array * 255).astype(np.uint8)
 				yuv = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2YUV).astype(np.float32) / 255.0
-				y_rendered = renderer._render_single_channel(yuv[:, :, 0], zoom=1.0, output_size=None)
+				y_rendered = renderer.render_single_channel(yuv[:, :, 0], zoom=1.0, output_size=None)
 				yuv[:, :, 0] = y_rendered
 				yuv_uint8 = (np.clip(yuv * 255.0, 0, 255)).astype(np.uint8)
 				output_array = cv2.cvtColor(yuv_uint8, cv2.COLOR_YUV2RGB).astype(np.float32)
 		else:
 			# RGB mode
 			if len(img_array.shape) == 2:
-				output_array = renderer._render_single_channel(img_array, zoom=1.0, output_size=None)
+				output_array = renderer.render_single_channel(img_array, zoom=1.0, output_size=None)
 				output_array = np.stack([output_array] * 3, axis=2)
 			else:
 				channels = []
 				for c in range(3):
-					rendered = renderer._render_single_channel(img_array[:, :, c], zoom=1.0, output_size=None)
+					rendered = renderer.render_single_channel(img_array[:, :, c], zoom=1.0, output_size=None)
 					channels.append(rendered)
 				output_array = np.stack(channels, axis=2)
 			output_array = output_array * 255.0
@@ -152,7 +152,7 @@ Presets:
 	
 	print(f"Found {len(images)} images")
 	
-	# Map presets
+	# Presets for easier use
 	intensity_map = {'fine': 0.08, 'medium': 0.12, 'heavy': 0.20}
 	quality_map = {'fast': 100, 'balanced': 200, 'high': 400}
 	
@@ -175,7 +175,7 @@ Presets:
 	
 	device_str = args.device
 	if args.device == 'auto':
-		device_str = 'GPU' if test_renderer._should_use_gpu() else 'CPU'
+		device_str = 'GPU' if test_renderer.device == 'gpu' else 'CPU'
 	elif args.device == 'gpu':
 		device_str = 'GPU'
 	else:

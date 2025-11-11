@@ -309,7 +309,7 @@ class FilmGrainRendererGPU:
 		if n_monte_carlo < 1:
 			raise ValueError("n_monte_carlo must be at least 1")
 	
-	def _render_single_channel(self, image: np.ndarray, zoom: float, output_size: Optional[Tuple[int, int]]) -> np.ndarray:
+	def render_single_channel(self, image: np.ndarray, zoom: float, output_size: Optional[Tuple[int, int]]) -> np.ndarray:
 		"""Render a single channel using GPU"""
 		m_in, n_in = image.shape
 		
@@ -368,7 +368,7 @@ class FilmGrainRendererGPU:
 			# Process each channel independently
 			channels = []
 			for c in range(3):
-				rendered_channel = self._render_single_channel(
+				rendered_channel = self.render_single_channel(
 					image[:, :, c], zoom, output_size
 				)
 				channels.append(rendered_channel)
@@ -377,7 +377,7 @@ class FilmGrainRendererGPU:
 			# Single channel
 			if len(image.shape) == 3:
 				image = image[:, :, 0]
-			output = self._render_single_channel(image, zoom, output_size)
+			output = self.render_single_channel(image, zoom, output_size)
 			output = np.stack([output] * 3, axis=2)
 		
 		# Convert back to uint8 and PIL
