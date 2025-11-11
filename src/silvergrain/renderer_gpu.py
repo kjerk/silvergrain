@@ -14,9 +14,7 @@ Ports the CPU rendering algorithm to CUDA for massive speedup.
 Each thread renders one output pixel independently.
 """
 
-# ============================================================================
-# CUDA DEVICE FUNCTIONS - RNG
-# ============================================================================
+# ? RNG Functions --------------------------------
 
 @cuda.jit(device=True)
 def hash_seed(seed):
@@ -81,9 +79,7 @@ def get_cell_seed(x, y, offset):
 	"""Generate unique seed for a cell"""
 	return (y * 65536 + x + offset) & 0xFFFFFFFF
 
-# ============================================================================
-# CUDA DEVICE FUNCTIONS - GEOMETRY
-# ============================================================================
+# ? GEOMETRY Functions ---------------------------
 
 @cuda.jit(device=True)
 def sq_distance(x1, y1, x2, y2):
@@ -92,9 +88,7 @@ def sq_distance(x1, y1, x2, y2):
 	dy = y1 - y2
 	return dx * dx + dy * dy
 
-# ============================================================================
-# CUDA KERNEL
-# ============================================================================
+# ? Custom Kernel --------------------------------
 
 @cuda.jit
 def render_grain_kernel(
@@ -224,9 +218,7 @@ def render_grain_kernel(
 	# Write output
 	img_out[y_out, x_out] = pix_out / n_monte_carlo
 
-# ============================================================================
-# HOST FUNCTION
-# ============================================================================
+# ? Host-side rendering function -----------------
 
 def film_grain_rendering_gpu(
 	img_in, grain_radius, grain_sigma, sigma_filter,
@@ -291,9 +283,7 @@ def film_grain_rendering_gpu(
 	
 	return img_out
 
-# ============================================================================
-# USER-FRIENDLY API
-# ============================================================================
+# ? Film Grain Renderer api ----------------------
 
 class FilmGrainRendererGPU:
 	"""
@@ -425,5 +415,5 @@ def check_gpu_grain_renderer():
 	print("\nGPU renderer is ready!")
 
 if __name__ == "__main__":
+	# check_gpu_grain_renderer()
 	print('__main__ not supported in modules.')
-# check_gpu_grain_renderer()

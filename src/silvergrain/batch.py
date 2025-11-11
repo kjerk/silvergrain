@@ -14,18 +14,6 @@ from .renderer import FilmGrainRenderer
 SilverGrain Batch CLI - Batch process directories of images
 """
 
-# Try to import GPU renderer
-try:
-	from numba import cuda
-	
-	from .renderer_gpu import FilmGrainRendererGPU
-	
-	GPU_AVAILABLE = cuda.is_available()
-except ImportError:
-	GPU_AVAILABLE = False
-	FilmGrainRendererGPU = None
-
-# Supported image formats
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}
 
 def find_images(input_dir: Path) -> List[Path]:
@@ -36,14 +24,7 @@ def find_images(input_dir: Path) -> List[Path]:
 		images.extend(input_dir.glob(f'*{ext.upper()}'))
 	return sorted(images)
 
-def process_image(
-	input_path: Path,
-	output_path: Path,
-	renderer,
-	mode: str,
-	strength: float,
-	verbose: bool = False
-) -> bool:
+def process_image(input_path: Path, output_path: Path, renderer, mode: str, strength: float, verbose: bool = False) -> bool:
 	"""Process a single image, return success status"""
 	try:
 		# Load image
@@ -139,20 +120,14 @@ Presets:
 	parser.add_argument('output_dir', type=str, help='Output directory for processed images')
 	
 	# User-facing options
-	parser.add_argument('--intensity', type=str, choices=['fine', 'medium', 'heavy'], default='medium',
-						help='Grain intensity (default: medium)')
-	parser.add_argument('--quality', type=str, choices=['fast', 'balanced', 'high'], default='balanced',
-						help='Quality/speed tradeoff (default: balanced)')
-	parser.add_argument('--mode', type=str, choices=['rgb', 'luminance'], default='luminance',
-						help='Grain mode (default: luminance)')
-	parser.add_argument('--strength', type=float, default=1.0,
-						help='Grain strength 0.0-1.0 (default: 1.0)')
-	parser.add_argument('--random-seed', action='store_true',
-						help='Use different random seed for each image (for data augmentation)')
+	parser.add_argument('--intensity', type=str, choices=['fine', 'medium', 'heavy'], default='medium', help='Grain intensity (default: medium)')
+	parser.add_argument('--quality', type=str, choices=['fast', 'balanced', 'high'], default='balanced', help='Quality/speed tradeoff (default: balanced)')
+	parser.add_argument('--mode', type=str, choices=['rgb', 'luminance'], default='luminance', help='Grain mode (default: luminance)')
+	parser.add_argument('--strength', type=float, default=1.0, help='Grain strength 0.0-1.0 (default: 1.0)')
+	parser.add_argument('--random-seed', action='store_true', help='Use different random seed for each image (for data augmentation)')
 	
 	# Advanced options
-	parser.add_argument('--device', type=str, choices=['auto', 'cpu', 'gpu'], default='auto',
-						help='Device to use (default: auto)')
+	parser.add_argument('--device', type=str, choices=['auto', 'cpu', 'gpu'], default='auto', help='Device to use (default: auto)')
 	parser.add_argument('--grain-radius', type=float, help='Override grain radius (0.05-0.25)')
 	parser.add_argument('--samples', type=int, help='Override Monte Carlo samples (100-800)')
 	parser.add_argument('--grain-sigma', type=float, default=0.0, help='Grain size variation')
@@ -196,22 +171,35 @@ Presets:
 	grain_radius = args.grain_radius if args.grain_radius else intensity_map[args.intensity]
 	n_samples = args.samples if args.samples else quality_map[args.quality]
 	
-	# Determine device
-	use_gpu = False
-	if args.device == 'gpu':
-		if not GPU_AVAILABLE:
-			print("Error: GPU requested but CUDA is not available", file=sys.stderr)
-			return 1
-		use_gpu = True
-	elif args.device == 'auto':
-		use_gpu = GPU_AVAILABLE
+	# Create a test renderer to determine actual device (for display)
+	try:
+		test_renderer = FilmGrainRenderer(
+			grain_radius=grain_radius,
+			grain_sigma=args.grain_sigma,
+			sigma_filter=args.sigma_filter,
+			n_monte_carlo=n_samples,
+			device=args.device,
+			seed=args.seed
+		)
+	except RuntimeError as e:
+		print(f"Error: {e}", file=sys.stderr)
+		return 1
+	
+	device_str = args.device
+	if args.device == 'auto':
+		device_str = 'GPU' if test_renderer._should_use_gpu() else 'CPU'
+	elif args.device == 'gpu':
+		device_str = 'GPU'
+	else:
+		device_str = 'CPU'
 	
 	# Print configuration
 	print("\nProcessing with:")
-	print(f"  Device: {'GPU' if use_gpu else 'CPU'}")
+	print(f"  Device: {device_str}")
 	print(f"  Intensity: {args.intensity}")
 	print(f"  Quality: {args.quality}")
 	print(f"  Mode: {args.mode}")
+	
 	if args.strength < 1.0:
 		print(f"  Strength: {args.strength:.2f}")
 	if args.random_seed:
@@ -231,22 +219,14 @@ Presets:
 		if args.random_seed:
 			seed = args.seed + idx
 		
-		if use_gpu:
-			renderer = FilmGrainRendererGPU(
-				grain_radius=grain_radius,
-				grain_sigma=args.grain_sigma,
-				sigma_filter=args.sigma_filter,
-				n_monte_carlo=n_samples,
-				seed=seed
-			)
-		else:
-			renderer = FilmGrainRenderer(
-				grain_radius=grain_radius,
-				grain_sigma=args.grain_sigma,
-				sigma_filter=args.sigma_filter,
-				n_monte_carlo=n_samples,
-				seed=seed
-			)
+		renderer = FilmGrainRenderer(
+			grain_radius=grain_radius,
+			grain_sigma=args.grain_sigma,
+			sigma_filter=args.sigma_filter,
+			n_monte_carlo=n_samples,
+			device=args.device,
+			seed=seed
+		)
 		
 		# Process
 		output_path = output_dir / input_path.name

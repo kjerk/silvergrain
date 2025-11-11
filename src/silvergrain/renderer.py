@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import Optional, Tuple, Union
 
 import numpy as np
-from numba import njit, prange
 from PIL import Image
+from numba import njit, prange
 
 """
 Physically-Based Film Grain Renderer
@@ -21,9 +21,7 @@ def get_cell_seed(x, y, offset):
 	# Simple deterministic hash from coordinates
 	return (y * 65536 + x + offset) & 0xFFFFFFFF
 
-# ============================================================================
-# CORE RENDERING FUNCTIONS
-# ============================================================================
+# ? Core rendering functions ---------------------
 
 @njit
 def sq_distance(x1, y1, x2, y2):
@@ -197,9 +195,7 @@ def film_grain_rendering_pixel_wise(
 	
 	return img_out
 
-# ============================================================================
-# USER-FRIENDLY API
-# ============================================================================
+# ? User friendly api ----------------------------
 
 class FilmGrainRenderer:
 	"""
@@ -230,6 +226,12 @@ class FilmGrainRenderer:
 		Higher = better quality but slower.
 		Typical range: 100 to 2000
 
+	device : str, default='cpu'
+		Computing device to use: 'cpu', 'gpu', or 'auto'.
+		'cpu' - Use CPU rendering (always available)
+		'gpu' - Use GPU acceleration (requires CUDA, raises error if unavailable)
+		'auto' - Use GPU if available, otherwise fall back to CPU
+
 	algorithm : str, default='pixel_wise'
 		Rendering algorithm to use.
 		Options: 'pixel_wise' (currently only option implemented)
@@ -251,6 +253,10 @@ class FilmGrainRenderer:
 	...     grain_sigma=0.03,
 	...     n_monte_carlo=400
 	... )
+
+	>>> # Use GPU acceleration
+	>>> renderer = FilmGrainRenderer(device='gpu', grain_radius=0.12)
+	>>> output = renderer.render(img)
 	"""
 	
 	def __init__(
@@ -259,6 +265,7 @@ class FilmGrainRenderer:
 		grain_sigma: float = 0.0,
 		sigma_filter: float = 0.8,
 		n_monte_carlo: int = 800,
+		device: str = 'auto',
 		algorithm: str = 'pixel_wise',
 		seed: int = 2016
 	):
@@ -266,8 +273,10 @@ class FilmGrainRenderer:
 		self.grain_sigma = grain_sigma
 		self.sigma_filter = sigma_filter
 		self.n_monte_carlo = n_monte_carlo
+		self.device = device
 		self.algorithm = algorithm
 		self.seed = seed
+		self._gpu_renderer = None  # Lazy instantiation
 		
 		# Validate parameters
 		if grain_radius <= 0:
@@ -278,6 +287,8 @@ class FilmGrainRenderer:
 			raise ValueError("sigma_filter must be positive")
 		if n_monte_carlo < 1:
 			raise ValueError("n_monte_carlo must be at least 1")
+		if device not in ['auto', 'cpu', 'gpu']:
+			raise ValueError(f"Invalid device: {device}. Must be 'auto', 'cpu', or 'gpu'")
 		if algorithm not in ['pixel_wise']:
 			raise ValueError(f"Unknown algorithm: {algorithm}")
 	
@@ -308,6 +319,10 @@ class FilmGrainRenderer:
 		PIL.Image
 			Rendered image with film grain applied
 		"""
+		# Delegate to GPU if needed
+		if self._should_use_gpu():
+			return self._render_gpu(image, zoom, output_size)
+		
 		# Load image if path provided
 		if isinstance(image, (Path, str)):
 			image = Image.open(image)
@@ -394,13 +409,50 @@ class FilmGrainRenderer:
 		
 		return output
 	
-	def render_from_file(
+	def _should_use_gpu(self) -> bool:
+		"""Determine if GPU should be used based on device setting and availability"""
+		if self.device == 'cpu':
+			return False
+		elif self.device in ('gpu', 'auto'):
+			try:
+				from numba import cuda
+				available = cuda.is_available()
+				if self.device == 'gpu' and not available:
+					raise RuntimeError(
+						"GPU device requested but CUDA is not available. "
+						"Ensure you have an NVIDIA GPU, CUDA toolkit installed, "
+						"and numba with CUDA support (pip install silvergrain[gpu])"
+					)
+				return available
+			except ImportError:
+				if self.device == 'gpu':
+					raise RuntimeError(
+						"GPU device requested but numba-cuda is not installed. "
+						"Install with: pip install silvergrain[gpu]"
+					)
+				return False
+		else:
+			raise ValueError(f"Invalid device: {self.device}")
+	
+	def _render_gpu(
 		self,
-		input_path: Union[Path, str],
-		output_path: Union[Path, str],
-		zoom: float = 1.0,
-		output_size: Optional[Tuple[int, int]] = None
-	):
+		image: Union[Image.Image, np.ndarray, Path, str],
+		zoom: float,
+		output_size: Optional[Tuple[int, int]]
+	) -> Image.Image:
+		"""Lazy import and delegate rendering to GPU"""
+		if self._gpu_renderer is None:
+			from .renderer_gpu import FilmGrainRendererGPU
+			self._gpu_renderer = FilmGrainRendererGPU(
+				grain_radius=self.grain_radius,
+				grain_sigma=self.grain_sigma,
+				sigma_filter=self.sigma_filter,
+				n_monte_carlo=self.n_monte_carlo,
+				seed=self.seed
+			)
+		return self._gpu_renderer.render(image, zoom, output_size)
+	
+	def render_from_file(self, input_path: Union[Path, str], output_path: Union[Path, str], zoom: float = 1.0, output_size: Optional[Tuple[int, int]] = None):
 		"""
 		Convenience method to render from file to file.
 
@@ -429,9 +481,7 @@ class FilmGrainRenderer:
 		output.save(output_path)
 		print("Done!")
 
-# ============================================================================
-# CONVENIENCE FUNCTIONS
-# ============================================================================
+# ? Convenience functions ------------------------
 
 def render_film_grain(
 	image: Union[Image.Image, np.ndarray, Path, str],
@@ -485,8 +535,8 @@ def render_film_grain(
 	)
 	return renderer.render(image, zoom=zoom)
 
-if __name__ == "__main__":
-	print("Film Grain Renderer - Numba compilation test")
+def check_grain_renderer():
+	print("Film Grain Renderer - basic test")
 	print("=" * 60)
 	
 	# Test basic functionality
@@ -505,3 +555,7 @@ if __name__ == "__main__":
 	print(f"Success! Output shape: {result.shape}")
 	print(f"Output range: [{result.min():.3f}, {result.max():.3f}]")
 	print("\nRenderer is ready to use!")
+
+if __name__ == "__main__":
+	# check_grain_renderer()
+	print('__main__ not supported in modules.')

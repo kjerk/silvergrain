@@ -8,20 +8,10 @@ from PIL import Image
 
 from .renderer import FilmGrainRenderer
 
+
 """
 SilverGrain CLI - Single image film grain rendering
 """
-
-# Try to import GPU renderer
-try:
-	from numba import cuda
-	
-	from .renderer_gpu import FilmGrainRendererGPU
-	
-	GPU_AVAILABLE = cuda.is_available()
-except ImportError:
-	GPU_AVAILABLE = False
-	FilmGrainRendererGPU = None
 
 def render_luminance_mode(pil_image: Image.Image, renderer) -> Image.Image:
 	"""
@@ -175,21 +165,34 @@ Presets:
 		image = image.convert('RGB')
 	
 	print(f"Image size: {image.size[0]}x{image.size[1]}")
-	
-	# Determine device
-	use_gpu = False
-	if args.device == 'gpu':
-		if not GPU_AVAILABLE:
-			print("Error: GPU requested but CUDA is not available", file=sys.stderr)
-			return 1
-		use_gpu = True
-	elif args.device == 'auto':
-		use_gpu = GPU_AVAILABLE
-	# else: device == 'cpu', use_gpu = False
-	
-	# Create renderer
+
+	# Create renderer with device parameter
+	try:
+		renderer = FilmGrainRenderer(
+			grain_radius=grain_radius,
+			grain_sigma=args.grain_sigma,
+			sigma_filter=args.sigma_filter,
+			n_monte_carlo=n_samples,
+			device=args.device,
+			seed=args.seed
+		)
+	except RuntimeError as e:
+		print(f"Error: {e}", file=sys.stderr)
+		return 1
+
+	# Determine actual device being used (for display)
+	device_str = args.device
+	if args.device == 'auto':
+		# Check if GPU will actually be used
+		device_str = 'GPU' if renderer._should_use_gpu() else 'CPU'
+	elif args.device == 'gpu':
+		device_str = 'GPU'
+	else:
+		device_str = 'CPU'
+
+	# Display rendering info
 	print("\nRendering with:")
-	print(f"  Device: {'GPU' if use_gpu else 'CPU'}")
+	print(f"  Device: {device_str}")
 	print(f"  Intensity: {args.intensity}")
 	print(f"  Quality: {args.quality}")
 	print(f"  Mode: {args.mode}")
@@ -197,23 +200,6 @@ Presets:
 		print(f"  Strength: {args.strength:.2f} (blended with original)")
 	if args.grain_radius or args.samples:
 		print(f"  [Advanced overrides: grain_radius={grain_radius}, samples={n_samples}]")
-	
-	if use_gpu:
-		renderer = FilmGrainRendererGPU(
-			grain_radius=grain_radius,
-			grain_sigma=args.grain_sigma,
-			sigma_filter=args.sigma_filter,
-			n_monte_carlo=n_samples,
-			seed=args.seed
-		)
-	else:
-		renderer = FilmGrainRenderer(
-			grain_radius=grain_radius,
-			grain_sigma=args.grain_sigma,
-			sigma_filter=args.sigma_filter,
-			n_monte_carlo=n_samples,
-			seed=args.seed
-		)
 	
 	# Render based on mode
 	print("\nRendering...")
