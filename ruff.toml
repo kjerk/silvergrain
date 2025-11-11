@@ -1,0 +1,10 @@
+cache-dir = "~/.cache/ruff"
+required-version = ">=0.12.1"
+target-version = "py311"
+
+line-length = 160
+
+[format]
+quote-style = "double"
+indent-style = "tab"
+docstring-code-format = false
