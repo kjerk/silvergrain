@@ -98,18 +98,13 @@ Presets:
 	parser.add_argument('output', type=str, help='Output image file')
 	
 	# Simple user-facing options
-	parser.add_argument('--intensity', type=str, choices=['fine', 'medium', 'heavy'], default='medium',
-						help='Grain intensity: fine (subtle), medium (noticeable), heavy (strong) (default: medium)')
-	parser.add_argument('--quality', type=str, choices=['fast', 'balanced', 'high'], default='balanced',
-						help='Quality/speed tradeoff: fast (~1 min), balanced (~2-3 min), high (~5-8 min for 1080p) (default: balanced)')
-	parser.add_argument('--mode', type=str, choices=['rgb', 'luminance'], default='luminance',
-						help='Grain mode: "luminance" preserves color, "rgb" adds grain to each channel (default: luminance)')
-	parser.add_argument('--strength', type=float, default=1.0,
-						help='Grain strength: blend between original (0.0) and full grain (1.0) (default: 1.0, range: 0.0-1.0)')
+	parser.add_argument('--intensity', type=str, choices=['fine', 'medium', 'heavy'], default='medium', help='Grain intensity: fine (subtle), medium (noticeable), heavy (strong) (default: medium)')
+	parser.add_argument('--quality', type=str, choices=['fast', 'balanced', 'high'], default='balanced', help='Quality/speed tradeoff: fast (~1 min), balanced (~2-3 min), high (~5-8 min for 1080p) (default: balanced)')
+	parser.add_argument('--mode', type=str, choices=['rgb', 'luminance'], default='luminance', help='Grain mode: "luminance" preserves color, "rgb" adds grain to each channel (default: luminance)')
+	parser.add_argument('--strength', type=float, default=1.0, help='Grain strength: blend between original (0.0) and full grain (1.0) (default: 1.0, range: 0.0-1.0)')
 	
 	# Advanced options (most users won't need these)
-	parser.add_argument('--device', type=str, choices=['auto', 'cpu', 'gpu'], default='auto',
-						help='Device to use: auto (GPU if available), cpu, gpu (default: auto)')
+	parser.add_argument('--device', type=str, choices=['auto', 'cpu', 'gpu'], default='auto', help='Device to use: auto (GPU if available), cpu, gpu (default: auto)')
 	parser.add_argument('--grain-radius', type=float, help='Override grain radius (advanced, 0.05-0.25)')
 	parser.add_argument('--samples', type=int, help='Override Monte Carlo samples (advanced, 100-800)')
 	parser.add_argument('--grain-sigma', type=float, default=0.0, help='Grain size variation (advanced, default: 0.0)')
@@ -226,8 +221,8 @@ Presets:
 		blended = np.clip(blended, 0, 255).astype(np.uint8)
 		output = Image.fromarray(blended)
 	
-	# Save output
 	print(f"\nSaving to {output_path}...")
+	
 	try:
 		output.save(output_path)
 	except Exception as e:

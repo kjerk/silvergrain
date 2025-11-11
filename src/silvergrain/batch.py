@@ -2,27 +2,15 @@ import argparse
 import sys
 import time
 from pathlib import Path
-from typing import List
 
 import cv2
 import numpy as np
 from PIL import Image
-
-from .renderer import FilmGrainRenderer
+from silvergrain import FilmGrainRenderer, file_tools
 
 """
 SilverGrain Batch CLI - Batch process directories of images
 """
-
-IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}
-
-def find_images(input_dir: Path) -> List[Path]:
-	"""Find all supported images in directory (non-recursive for now)"""
-	images = []
-	for ext in IMAGE_EXTENSIONS:
-		images.extend(input_dir.glob(f'*{ext}'))
-		images.extend(input_dir.glob(f'*{ext.upper()}'))
-	return sorted(images)
 
 def process_image(input_path: Path, output_path: Path, renderer, mode: str, strength: float, verbose: bool = False) -> bool:
 	"""Process a single image, return success status"""
@@ -156,10 +144,10 @@ Presets:
 	
 	# Find images
 	print(f"Scanning {input_dir}...")
-	images = find_images(input_dir)
+	images = file_tools.list_images(input_dir)
 	if not images:
 		print(f"Error: No images found in {input_dir}", file=sys.stderr)
-		print(f"Supported formats: {', '.join(IMAGE_EXTENSIONS)}", file=sys.stderr)
+		print(f"Supported formats: {', '.join(file_tools.IMAGE_EXTENSIONS)}", file=sys.stderr)
 		return 1
 	
 	print(f"Found {len(images)} images")
