@@ -2,22 +2,28 @@ import argparse
 import sys
 import time
 from pathlib import Path
+from typing import Tuple
 
 import cv2
 import numpy as np
 from PIL import Image
+from rich.console import Console
+from rich.markup import escape
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn, TimeElapsedColumn
+from rich.table import Table
 from silvergrain import FilmGrainRenderer, file_tools
 
 """
 SilverGrain Batch CLI - Batch process directories of images
 """
 
-def process_image(input_path: Path, output_path: Path, renderer, mode: str, strength: float, verbose: bool = False) -> bool:
-	"""Process a single image, return success status"""
+console = Console()
+
+def process_image(input_path: Path, output_path: Path, renderer, mode: str, strength: float) -> Tuple[bool, str]:
+	"""Process a single image, return (success, error_message)"""
 	try:
 		# Load image
-		if verbose:
-			print(f"  Loading {input_path.name}...")
 		image = Image.open(input_path)
 		
 		# Convert to RGB if needed
@@ -67,15 +73,12 @@ def process_image(input_path: Path, output_path: Path, renderer, mode: str, stre
 		output = Image.fromarray(output_array)
 		
 		# Save
-		if verbose:
-			print(f"  Saving {output_path.name}...")
 		output.save(output_path)
-		
-		return True
-	
+
+		return True, ""
+
 	except Exception as e:
-		print(f"  ERROR processing {input_path.name}: {e}", file=sys.stderr)
-		return False
+		return False, str(e)
 
 def main() -> int:
 	"""Main CLI entry point for batch processing"""
@@ -128,29 +131,29 @@ Presets:
 	# Validate directories
 	input_dir = Path(args.input_dir)
 	if not input_dir.exists():
-		print(f"Error: Input directory '{args.input_dir}' not found", file=sys.stderr)
+		console.print(f"[red]Error:[/red] Input directory [bright_yellow]{escape(str(input_dir))}[/bright_yellow] not found", file=sys.stderr)
 		return 1
 	if not input_dir.is_dir():
-		print(f"Error: '{args.input_dir}' is not a directory", file=sys.stderr)
+		console.print(f"[red]Error:[/red] [bright_yellow]{escape(str(input_dir))}[/bright_yellow] is not a directory", file=sys.stderr)
 		return 1
-	
+
 	output_dir = Path(args.output_dir)
 	output_dir.mkdir(parents=True, exist_ok=True)
-	
+
 	# Validate strength
 	if args.strength < 0.0 or args.strength > 1.0:
-		print(f"Error: --strength must be between 0.0 and 1.0, got {args.strength}", file=sys.stderr)
+		console.print(f"[red]Error:[/red] --strength must be between 0.0 and 1.0, got {args.strength}", file=sys.stderr)
 		return 1
-	
+
 	# Find images
-	print(f"Scanning {input_dir}...")
+	console.print(f"[cyan]Scanning[/cyan] [bright_yellow]{escape(str(input_dir))}[/bright_yellow]...")
 	images = file_tools.list_images(input_dir)
 	if not images:
-		print(f"Error: No images found in {input_dir}", file=sys.stderr)
-		print(f"Supported formats: {', '.join(file_tools.IMAGE_EXTENSIONS)}", file=sys.stderr)
+		console.print(f"[red]Error:[/red] No images found in [bright_yellow]{escape(str(input_dir))}[/bright_yellow]", file=sys.stderr)
+		console.print(f"Supported formats: {', '.join(file_tools.IMAGE_EXTENSIONS)}", file=sys.stderr)
 		return 1
-	
-	print(f"Found {len(images)} images")
+
+	console.print(f"[green]Found {len(images)} images[/green]")
 	
 	# Presets for easier use
 	intensity_map = {'fine': 0.08, 'medium': 0.12, 'heavy': 0.20}
@@ -170,68 +173,123 @@ Presets:
 			seed=args.seed
 		)
 	except RuntimeError as e:
-		print(f"Error: {e}", file=sys.stderr)
+		console.print(f"[red]Error:[/red] {e}", file=sys.stderr)
 		return 1
 	
-	device_str = args.device
-	if args.device == 'auto':
-		device_str = 'GPU' if test_renderer.device == 'gpu' else 'CPU'
-	elif args.device == 'gpu':
-		device_str = 'GPU'
-	else:
-		device_str = 'CPU'
-	
-	# Print configuration
-	print("\nProcessing with:")
-	print(f"  Device: {device_str}")
-	print(f"  Intensity: {args.intensity}")
-	print(f"  Quality: {args.quality}")
-	print(f"  Mode: {args.mode}")
-	
+	device_str = 'GPU' if test_renderer.device == 'gpu' else 'CPU'
+
+	# Display configuration panel
+	config_table = Table.grid(padding=(0, 2))
+	config_table.add_column(style="cyan", justify="right")
+	config_table.add_column(style="white")
+
+	config_table.add_row("Images:", f"{len(images)}")
+	config_table.add_row("Device:", f"[bold]{device_str}[/bold]")
+	config_table.add_row("Intensity:", args.intensity)
+	config_table.add_row("Quality:", args.quality)
+	config_table.add_row("Mode:", args.mode)
+
 	if args.strength < 1.0:
-		print(f"  Strength: {args.strength:.2f}")
+		config_table.add_row("Strength:", f"{args.strength:.2f}")
 	if args.random_seed:
-		print("  Random seed per image: enabled")
-	print()
+		config_table.add_row("Random seeds:", "[yellow]enabled[/yellow]")
+
+	console.print()
+	console.print(Panel(config_table, title="[bold]Film Grain Batch Processing[/bold]", border_style="blue"))
+	console.print()
 	
-	# Process images
+	# Process images with progress bar
 	start_time = time.time()
 	success_count = 0
 	fail_count = 0
+	failed_images = []
 	
-	for idx, input_path in enumerate(images, 1):
-		print(f"[{idx}/{len(images)}] {input_path.name}")
-		
-		# Create renderer (new seed if random_seed enabled)
-		seed = args.seed
-		if args.random_seed:
-			seed = args.seed + idx
-		
-		renderer = FilmGrainRenderer(
-			grain_radius=grain_radius,
-			grain_sigma=args.grain_sigma,
-			sigma_filter=args.sigma_filter,
-			n_monte_carlo=n_samples,
-			device=args.device,
-			seed=seed
-		)
-		
-		# Process
-		output_path = output_dir / input_path.name
-		if process_image(input_path, output_path, renderer, args.mode, args.strength, args.verbose):
-			success_count += 1
-		else:
-			fail_count += 1
+	progress_columns = [
+		SpinnerColumn(),
+		TextColumn("[progress.description]{task.description}"),
+		BarColumn(),
+		TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+		TextColumn("|"),
+		TextColumn("[cyan]{task.completed}/{task.total}"),
+		TextColumn("|"),
+		TimeElapsedColumn(),
+		TextColumn("|"),
+		TimeRemainingColumn()
+	]
 	
-	# Summary
+	with Progress(*progress_columns, console=console) as progress:
+		task = progress.add_task("[green]Processing images...", total=len(images))
+
+		for idx, input_path in enumerate(images, 1):
+			# Update progress with current file
+			progress.update(task, description=f"[green]Processing[/green] [bright_yellow]{escape(input_path.name)}[/bright_yellow]")
+
+			# Create renderer (new seed if random_seed enabled)
+			seed = args.seed
+			if args.random_seed:
+				seed = args.seed + idx
+
+			renderer = FilmGrainRenderer(
+				grain_radius=grain_radius,
+				grain_sigma=args.grain_sigma,
+				sigma_filter=args.sigma_filter,
+				n_monte_carlo=n_samples,
+				device=args.device,
+				seed=seed
+			)
+
+			# Process
+			output_path = output_dir / input_path.name
+			success, error = process_image(input_path, output_path, renderer, args.mode, args.strength)
+
+			if success:
+				success_count += 1
+			else:
+				fail_count += 1
+				failed_images.append((input_path.name, error))
+
+			progress.advance(task)
+
+	# Display summary
 	elapsed = time.time() - start_time
-	print(f"\n{'=' * 60}")
-	print(f"Completed in {elapsed:.1f}s ({elapsed / len(images):.2f}s per image)")
-	print(f"Success: {success_count}/{len(images)}")
+	avg_time = elapsed / len(images)
+
+	console.print()
+
+	# Create summary table
+	summary = Table(show_header=True, header_style="bold cyan", border_style="blue")
+	summary.add_column("Metric", style="cyan", justify="right")
+	summary.add_column("Value", style="white")
+
+	summary.add_row("Total images", str(len(images)))
+	summary.add_row("Successful", f"[green]{success_count}[/green]")
+
 	if fail_count > 0:
-		print(f"Failed: {fail_count}")
-	print('=' * 60)
-	
+		summary.add_row("Failed", f"[red]{fail_count}[/red]")
+
+	summary.add_row("Total time", f"{elapsed:.1f}s")
+	summary.add_row("Average time", f"{avg_time:.2f}s per image")
+
+	if len(images) > 0:
+		throughput = len(images) / elapsed
+		summary.add_row("Throughput", f"{throughput:.2f} images/sec")
+
+	console.print(Panel(summary, title="[bold]Batch Processing Summary[/bold]", border_style="green" if fail_count == 0 else "yellow"))
+
+	# Report failed images if any
+	if failed_images:
+		console.print()
+		error_table = Table(show_header=True, header_style="bold red", border_style="red")
+		error_table.add_column("File", style="bright_yellow")
+		error_table.add_column("Error", style="white")
+
+		for filename, error in failed_images:
+			error_table.add_row(escape(filename), error)
+
+		console.print(Panel(error_table, title="[bold red]Failed Images[/bold red]", border_style="red"))
+
+	console.print()
+
 	return 0 if fail_count == 0 else 1
 
 if __name__ == '__main__':
