@@ -3,8 +3,8 @@ Benchmark GPU vs CPU performance
 """
 import numpy as np
 import time
-from film_grain_renderer import FilmGrainRenderer
-from film_grain_renderer_gpu import FilmGrainRendererGPU
+from silvergrain.renderer import FilmGrainRenderer
+from silvergrain.renderer_gpu import FilmGrainRendererGPU
 
 
 def benchmark(renderer, img, name, warmup=True):

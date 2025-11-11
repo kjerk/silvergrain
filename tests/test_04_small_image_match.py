@@ -3,8 +3,8 @@ Test GPU and CPU on small image with visual comparison
 """
 import numpy as np
 from PIL import Image
-from film_grain_renderer import FilmGrainRenderer
-from film_grain_renderer_gpu import FilmGrainRendererGPU
+from silvergrain.renderer import FilmGrainRenderer
+from silvergrain.renderer_gpu import FilmGrainRendererGPU
 
 
 def create_test_image(size=64):

@@ -5,8 +5,8 @@ Note: Results won't be identical due to different RNG implementations,
 but should be statistically similar.
 """
 import numpy as np
-from film_grain_renderer import FilmGrainRenderer
-from film_grain_renderer_gpu import FilmGrainRendererGPU
+from silvergrain.renderer import FilmGrainRenderer
+from silvergrain.renderer_gpu import FilmGrainRendererGPU
 
 
 def test_single_pixel(intensity=0.5, grain_radius=0.12, n_monte_carlo=200):

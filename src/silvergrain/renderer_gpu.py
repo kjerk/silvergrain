@@ -1,9 +1,3 @@
-"""
-GPU-Accelerated Film Grain Renderer using Numba CUDA
-
-Ports the CPU rendering algorithm to CUDA for massive speedup.
-Each thread renders one output pixel independently.
-"""
 import numpy as np
 from numba import cuda
 import math
@@ -12,6 +6,12 @@ from pathlib import Path
 from typing import Union, Tuple, Optional
 import warnings
 
+"""
+GPU-Accelerated Film Grain Renderer using Numba CUDA
+
+Ports the CPU rendering algorithm to CUDA for massive speedup.
+Each thread renders one output pixel independently.
+"""
 
 # ============================================================================
 # CUDA DEVICE FUNCTIONS - RNG
