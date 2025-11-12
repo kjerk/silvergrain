@@ -87,17 +87,20 @@ def main() -> int:
 		formatter_class=argparse.RawDescriptionHelpFormatter,
 		epilog="""
 Examples:
-  # Process all images in directory
+  # Process all images in directory (in-place with -grainy suffix)
+  silvergrain-batch input_dir/
+
+  # Process to separate output directory
   silvergrain-batch input_dir/ output_dir/
 
   # Heavy grain with fast quality
-  silvergrain-batch input_dir/ output_dir/ --intensity heavy --quality fast
+  silvergrain-batch input_dir/ --intensity heavy --quality fast
 
-  # Subtle grain effect
-  silvergrain-batch input_dir/ output_dir/ --strength 0.3
+  # Search subdirectories recursively
+  silvergrain-batch input_dir/ --recursive
 
   # Randomize grain per image (different seed for each)
-  silvergrain-batch input_dir/ output_dir/ --random-seed
+  silvergrain-batch input_dir/ --random-seed
 
 Presets:
   Intensity: fine (subtle) | medium (default) | heavy (strong)
@@ -106,9 +109,9 @@ Presets:
   Device:    auto (default, uses GPU if available) | cpu | gpu
         """
 	)
-	
+
 	parser.add_argument('input_dir', type=str, help='Input directory containing images')
-	parser.add_argument('output_dir', type=str, help='Output directory for processed images')
+	parser.add_argument('output_dir', type=str, nargs='?', default=None, help='Output directory for processed images (optional, defaults to in-place with -grainy suffix)')
 	
 	# User-facing options
 	parser.add_argument('--intensity', type=str, choices=['fine', 'medium', 'heavy'], default='medium', help='Grain intensity (default: medium)')
@@ -117,6 +120,9 @@ Presets:
 	parser.add_argument('--strength', type=float, default=1.0, help='Grain strength 0.0-1.0 (default: 1.0)')
 	parser.add_argument('--random-seed', action='store_true', help='Use different random seed for each image (for data augmentation)')
 	
+	# File handling options
+	parser.add_argument('--recursive', action='store_true', help='Search subdirectories recursively')
+
 	# Advanced options
 	parser.add_argument('--device', type=str, choices=['auto', 'cpu', 'gpu'], default='auto', help='Device to use (default: auto)')
 	parser.add_argument('--grain-radius', type=float, help='Override grain radius (0.05-0.25)')
@@ -137,8 +143,13 @@ Presets:
 		console.print(f"[red]Error:[/red] [bright_yellow]{escape(str(input_dir))}[/bright_yellow] is not a directory", file=sys.stderr)
 		return 1
 
-	output_dir = Path(args.output_dir)
-	output_dir.mkdir(parents=True, exist_ok=True)
+	# Handle output directory
+	inplace_mode = args.output_dir is None
+	if inplace_mode:
+		output_dir = None
+	else:
+		output_dir = Path(args.output_dir)
+		output_dir.mkdir(parents=True, exist_ok=True)
 
 	# Validate strength
 	if args.strength < 0.0 or args.strength > 1.0:
@@ -146,14 +157,17 @@ Presets:
 		return 1
 
 	# Find images
-	console.print(f"[cyan]Scanning[/cyan] [bright_yellow]{escape(str(input_dir))}[/bright_yellow]...")
-	images = file_tools.list_images(input_dir)
+	recursive = args.recursive
+	search_mode = "recursively" if recursive else "in current directory only"
+	console.print(f"[cyan]Scanning[/cyan] [bright_yellow]{escape(str(input_dir))}[/bright_yellow] {search_mode}...")
+	images = file_tools.list_images(input_dir, recursive=recursive)
 	if not images:
 		console.print(f"[red]Error:[/red] No images found in [bright_yellow]{escape(str(input_dir))}[/bright_yellow]", file=sys.stderr)
 		console.print(f"Supported formats: {', '.join(file_tools.IMAGE_EXTENSIONS)}", file=sys.stderr)
 		return 1
 
-	console.print(f"[green]Found {len(images)} images[/green]")
+	mode_str = "in-place (adding -grainy suffix)" if inplace_mode else f"to [bright_yellow]{escape(str(output_dir))}[/bright_yellow]"
+	console.print(f"[green]Found {len(images)} images[/green] - processing {mode_str}")
 	
 	# Presets for easier use
 	intensity_map = {'fine': 0.08, 'medium': 0.12, 'heavy': 0.20}
@@ -184,6 +198,12 @@ Presets:
 	config_table.add_column(style="white")
 
 	config_table.add_row("Images:", f"{len(images)}")
+	if inplace_mode:
+		config_table.add_row("Output:", "[yellow]In-place with -grainy suffix[/yellow]")
+	else:
+		config_table.add_row("Output:", f"[bright_yellow]{escape(str(output_dir))}[/bright_yellow]")
+	if recursive:
+		config_table.add_row("Recursive:", "[green]Yes[/green]")
 	config_table.add_row("Device:", f"[bold]{device_str}[/bold]")
 	config_table.add_row("Intensity:", args.intensity)
 	config_table.add_row("Quality:", args.quality)
@@ -238,8 +258,16 @@ Presets:
 				seed=seed
 			)
 
+			# Determine output path
+			if inplace_mode:
+				# In-place mode: save with -grainy suffix in same directory
+				stem = input_path.stem
+				output_path = input_path.parent / f"{stem}-grainy.png"
+			else:
+				# Output directory mode: preserve filename
+				output_path = output_dir / input_path.name
+
 			# Process
-			output_path = output_dir / input_path.name
 			success, error = process_image(input_path, output_path, renderer, args.mode, args.strength)
 
 			if success:

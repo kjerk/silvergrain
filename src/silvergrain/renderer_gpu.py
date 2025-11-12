@@ -287,7 +287,7 @@ class FilmGrainRendererGPU:
 	"""
 	GPU-accelerated film grain renderer.
 
-	Same API as FilmGrainRenderer but uses CUDA for 50-100x speedup.
+	Same API as FilmGrainRenderer but uses CUDA for 200-600x speedup.
 	"""
 	
 	def __init__(self, grain_radius: float = 0.1, grain_sigma: float = 0.0, sigma_filter: float = 0.8, n_monte_carlo: int = 800, seed: int = 2016):

@@ -123,8 +123,7 @@ def render_pixel(
 						curr_grain_radius_sq = grain_radius_sq
 					
 					# Test if point is covered by this grain
-					if sq_distance(x_centre_grain, y_centre_grain,
-								   x_gaussian, y_gaussian) < curr_grain_radius_sq:
+					if sq_distance(x_centre_grain, y_centre_grain, x_gaussian, y_gaussian) < curr_grain_radius_sq:
 						pix_out += 1.0
 						pt_covered = True
 						break

@@ -5,7 +5,7 @@ import natsort
 
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}
 
-def list_images(input_dir: Path, recursive: bool = True) -> List[Path]:
+def list_images(input_dir: Path, recursive: bool = False) -> List[Path]:
 	search_glob = '**/*' if recursive else '*'
 	image_paths = []
 	
