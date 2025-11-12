@@ -10,7 +10,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-from silvergrain.renderer import FilmGrainRenderer
+from silvergrain import FilmGrainRenderer
 
 """
 SilverGrain CLI - Single image film grain rendering
