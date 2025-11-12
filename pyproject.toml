@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "silvergrain"
-version = "0.3"
+version = "0.4"
 description = "Physically-based film grain renderer image processing"
 readme = "README.md"
 requires-python = ">=3.1"
@@ -44,8 +44,9 @@ dev = [
 ]
 
 [project.scripts]
-silvergrain = "silvergrain.cli:main"
-silvergrain-batch = "silvergrain.batch:main"
+silvergrain = "silvergrain.cli_image:main"
+silvergrain-batch = "silvergrain.cli_batch:main"
+silvergrain-augment = "silvergrain.cli_augment:main"
 
 [project.urls]
 Homepage = "https://github.com/kjerk/silvergrain"
