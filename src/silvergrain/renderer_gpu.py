@@ -359,7 +359,7 @@ class FilmGrainRendererGPU:
 			warnings.warn("Image values > 1.0 detected, normalizing to [0, 1]")
 			image = image / 255.0
 		
-		# Handle color vs grayscale
+		# Handle color vs greyscale
 		is_color = len(image.shape) == 3 and image.shape[2] == 3
 		
 		if is_color:

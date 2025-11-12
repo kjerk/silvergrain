@@ -150,7 +150,7 @@ class FilmGrainRenderer:
 		Parameters
 		----------
 		image : PIL.Image, np.ndarray, Path, or str
-			Input image. Can be grayscale or RGB.
+			Input image. Can be greyscale or RGB.
 			If path, will load automatically.
 
 		zoom : float, default=1.0
@@ -169,12 +169,12 @@ class FilmGrainRenderer:
 	
 	def render_single_channel(self, image: numpy.ndarray, zoom: float, output_size: Optional[Tuple[int, int]]) -> numpy.ndarray:
 		"""
-		Render film grain on a single channel (grayscale array).
+		Render film grain on a single channel (greyscale array).
 
 		Parameters
 		----------
 		image : np.ndarray
-			Input grayscale image as 2D numpy array, normalized to [0, 1]
+			Input greyscale image as 2D numpy array, normalized to [0, 1]
 
 		zoom : float
 			Output resolution multiplier
@@ -185,7 +185,7 @@ class FilmGrainRenderer:
 		Returns
 		-------
 		np.ndarray
-			Rendered grayscale image as 2D float32 array in [0, 1]
+			Rendered greyscale image as 2D float32 array in [0, 1]
 		"""
 		return self._impl.render_single_channel(image, zoom, output_size)
 	
@@ -196,7 +196,7 @@ class FilmGrainRenderer:
 		Parameters
 		----------
 		pil_image : PIL.Image
-			Input image (grayscale or RGB)
+			Input image (greyscale or RGB)
 
 		mode : str, default='luminance'
 			Rendering mode:
@@ -219,58 +219,41 @@ class FilmGrainRenderer:
 		# Convert PIL to numpy array [0, 1]
 		img_array = numpy.array(pil_image, dtype=numpy.float32) / 255.0
 		
-		if mode == 'luminance':
-			# Luminance mode
-			if len(img_array.shape) == 2:
-				# Already grayscale
-				output_array = self.render_single_channel(img_array, zoom=1.0, output_size=None)
-				output_array = numpy.stack([output_array] * 3, axis=2)
-			else:
-				# Convert RGB to YUV
-				img_uint8 = (img_array * 255).astype(numpy.uint8)
-				yuv = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2YUV).astype(numpy.float32) / 255.0
-				
-				# Render grain on Y (luminance) channel only
-				y_rendered = self.render_single_channel(yuv[:, :, 0], zoom=1.0, output_size=None)
-				yuv[:, :, 0] = y_rendered
-				
-				# Convert back to RGB
-				yuv_uint8 = (numpy.clip(yuv * 255.0, 0, 255)).astype(numpy.uint8)
-				output_array = cv2.cvtColor(yuv_uint8, cv2.COLOR_YUV2RGB).astype(numpy.float32) / 255.0
+		is_greyscale = len(img_array.shape) == 2
+		
+		if is_greyscale:
+			# No matter what mode you picked, greyscale image - process once
+			output_array = self.render_single_channel(img_array, zoom=1.0, output_size=None)
+			output_array = numpy.stack([output_array] * 3, axis=2)
+		elif mode == 'luminance':
+			# Convert RGB to YUV
+			img_uint8 = (img_array * 255).astype(numpy.uint8)
+			yuv = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2YUV).astype(numpy.float32) / 255.0
+			
+			# Render grain on Y (luminance) channel only
+			y_rendered = self.render_single_channel(yuv[:, :, 0], zoom=1.0, output_size=None)
+			yuv[:, :, 0] = y_rendered
+			
+			# Convert back to RGB
+			yuv_uint8 = (numpy.clip(yuv * 255.0, 0, 255)).astype(numpy.uint8)
+			output_array = cv2.cvtColor(yuv_uint8, cv2.COLOR_YUV2RGB).astype(numpy.float32) / 255.0
 		else:
-			# RGB mode
-			if len(img_array.shape) == 2:
-				# Grayscale - process once, copy to RGB
-				output_array = self.render_single_channel(img_array, zoom=1.0, output_size=None)
-				output_array = numpy.stack([output_array] * 3, axis=2)
-			else:
-				# Process each channel independently
-				channels = []
-				for c in range(3):
-					rendered = self.render_single_channel(img_array[:, :, c], zoom=1.0, output_size=None)
-					channels.append(rendered)
-				output_array = numpy.stack(channels, axis=2)
+			# RGB mode - Process each channel independently
+			channels = []
+			for c in range(3):
+				rendered = self.render_single_channel(img_array[:, :, c], zoom=1.0, output_size=None)
+				channels.append(rendered)
+			output_array = numpy.stack(channels, axis=2)
 		
 		# Blend with original if strength < 1.0
 		if strength < 1.0:
-			# Convert to [0, 255] range for blending
-			original_255 = img_array * 255.0
-			output_255 = output_array * 255.0
-			
-			blended_255 = blend_images(original_255, output_255, strength)
-			output_array = blended_255 / 255.0
+			output_array = blend_images(img_array, output_array, strength)
 		
 		# Convert to uint8 and PIL Image
 		output_uint8 = numpy.clip(output_array * 255.0, 0, 255).astype(numpy.uint8)
 		return Image.fromarray(output_uint8)
 	
-	def render_from_file(
-		self,
-		input_path: Union[Path, str],
-		output_path: Union[Path, str],
-		zoom: float = 1.0,
-		output_size: Optional[Tuple[int, int]] = None
-	):
+	def render_from_file(self, input_path: Union[Path, str], output_path: Union[Path, str], zoom: float = 1.0, output_size: Optional[Tuple[int, int]] = None):
 		"""
 		Convenience method to render from file to file.
 

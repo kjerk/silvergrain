@@ -229,7 +229,7 @@ class FilmGrainRendererCPU:
 		Parameters
 		----------
 		image : PIL.Image, np.ndarray, Path, or str
-			Input image. Can be grayscale or RGB.
+			Input image. Can be greyscale or RGB.
 			If path, will load automatically.
 
 		zoom : float, default=1.0
@@ -265,7 +265,7 @@ class FilmGrainRendererCPU:
 			warnings.warn("Image values > 1.0 detected, normalizing to [0, 1]")
 			image = image / 255.0
 		
-		# Handle color vs grayscale
+		# Handle color vs greyscale
 		is_color = len(image.shape) == 3 and image.shape[2] == 3
 		
 		if is_color:
@@ -296,7 +296,7 @@ class FilmGrainRendererCPU:
 		zoom: float,
 		output_size: Optional[Tuple[int, int]]
 	) -> np.ndarray:
-		"""Render a single channel (grayscale image)"""
+		"""Render a single channel (greyscale image)"""
 		m_in, n_in = image.shape
 		
 		# Determine output size
