@@ -1,8 +1,11 @@
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
-import numpy as np
+import cv2
+import numpy
 from PIL import Image
+
+from silvergrain.image_processing import blend_images
 
 """
 Film Grain Renderer - Public API
@@ -140,7 +143,7 @@ class FilmGrainRenderer:
 		"""Return the actual device being used ('cpu' or 'gpu')"""
 		return self._device
 	
-	def render(self, image: Union[Image.Image, np.ndarray, Path, str], zoom: float = 1.0, output_size: Optional[Tuple[int, int]] = None) -> Image.Image:
+	def render(self, image: Union[Image.Image, numpy.ndarray, Path, str], zoom: float = 1.0, output_size: Optional[Tuple[int, int]] = None) -> Image.Image:
 		"""
 		Render film grain on an image.
 
@@ -164,7 +167,7 @@ class FilmGrainRenderer:
 		"""
 		return self._impl.render(image, zoom, output_size)
 	
-	def render_single_channel(self, image: np.ndarray, zoom: float, output_size: Optional[Tuple[int, int]]) -> np.ndarray:
+	def render_single_channel(self, image: numpy.ndarray, zoom: float, output_size: Optional[Tuple[int, int]]) -> numpy.ndarray:
 		"""
 		Render film grain on a single channel (grayscale array).
 
@@ -185,6 +188,81 @@ class FilmGrainRenderer:
 			Rendered grayscale image as 2D float32 array in [0, 1]
 		"""
 		return self._impl.render_single_channel(image, zoom, output_size)
+	
+	def process_image(self, pil_image: Image.Image, mode: str = 'luminance', strength: float = 1.0) -> Image.Image:
+		"""
+		Process a PIL image with film grain rendering and optional blending.
+
+		Parameters
+		----------
+		pil_image : PIL.Image
+			Input image (grayscale or RGB)
+
+		mode : str, default='luminance'
+			Rendering mode:
+			- 'luminance': Apply grain to luminance channel only, preserving color
+			- 'rgb': Apply grain independently to each RGB channel
+
+		strength : float, default=1.0
+			Grain strength [0.0, 1.0]
+			0.0 = no grain, 1.0 = full grain
+
+		Returns
+		-------
+		PIL.Image
+			Processed image with grain applied
+		"""
+		# Convert to RGB if needed
+		if pil_image.mode not in ['L', 'RGB']:
+			pil_image = pil_image.convert('RGB')
+		
+		# Convert PIL to numpy array [0, 1]
+		img_array = numpy.array(pil_image, dtype=numpy.float32) / 255.0
+		
+		if mode == 'luminance':
+			# Luminance mode
+			if len(img_array.shape) == 2:
+				# Already grayscale
+				output_array = self.render_single_channel(img_array, zoom=1.0, output_size=None)
+				output_array = numpy.stack([output_array] * 3, axis=2)
+			else:
+				# Convert RGB to YUV
+				img_uint8 = (img_array * 255).astype(numpy.uint8)
+				yuv = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2YUV).astype(numpy.float32) / 255.0
+				
+				# Render grain on Y (luminance) channel only
+				y_rendered = self.render_single_channel(yuv[:, :, 0], zoom=1.0, output_size=None)
+				yuv[:, :, 0] = y_rendered
+				
+				# Convert back to RGB
+				yuv_uint8 = (numpy.clip(yuv * 255.0, 0, 255)).astype(numpy.uint8)
+				output_array = cv2.cvtColor(yuv_uint8, cv2.COLOR_YUV2RGB).astype(numpy.float32) / 255.0
+		else:
+			# RGB mode
+			if len(img_array.shape) == 2:
+				# Grayscale - process once, copy to RGB
+				output_array = self.render_single_channel(img_array, zoom=1.0, output_size=None)
+				output_array = numpy.stack([output_array] * 3, axis=2)
+			else:
+				# Process each channel independently
+				channels = []
+				for c in range(3):
+					rendered = self.render_single_channel(img_array[:, :, c], zoom=1.0, output_size=None)
+					channels.append(rendered)
+				output_array = numpy.stack(channels, axis=2)
+		
+		# Blend with original if strength < 1.0
+		if strength < 1.0:
+			# Convert to [0, 255] range for blending
+			original_255 = img_array * 255.0
+			output_255 = output_array * 255.0
+			
+			blended_255 = blend_images(original_255, output_255, strength)
+			output_array = blended_255 / 255.0
+		
+		# Convert to uint8 and PIL Image
+		output_uint8 = numpy.clip(output_array * 255.0, 0, 255).astype(numpy.uint8)
+		return Image.fromarray(output_uint8)
 	
 	def render_from_file(
 		self,
@@ -210,7 +288,7 @@ class FilmGrainRenderer:
 		return self._impl.render_from_file(input_path, output_path, zoom, output_size)
 
 def render_film_grain(
-	image: Union[Image.Image, np.ndarray, Path, str],
+	image: Union[Image.Image, numpy.ndarray, Path, str],
 	grain_radius: float = 0.1,
 	grain_sigma: float = 0.0,
 	sigma_filter: float = 0.8,
@@ -270,7 +348,7 @@ def check_grain_renderer():
 	renderer = FilmGrainRenderer(grain_radius=0.1, n_monte_carlo=100)
 	
 	print("Generating test image (64x64)...")
-	test_img = np.random.rand(64, 64).astype(np.float32)
+	test_img = numpy.random.rand(64, 64).astype(numpy.float32)
 	
 	print("Rendering (first run will trigger Numba JIT compilation)...")
 	result = renderer.render_single_channel(test_img, zoom=1.0, output_size=None)

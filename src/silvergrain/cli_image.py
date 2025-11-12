@@ -3,8 +3,6 @@ import sys
 import time
 from pathlib import Path
 
-import cv2
-import numpy as np
 from PIL import Image
 from rich.console import Console
 from rich.markup import escape
@@ -19,59 +17,6 @@ SilverGrain CLI - Single image film grain rendering
 """
 
 console = Console()
-
-def render_luminance_mode(pil_image: Image.Image, renderer: FilmGrainRenderer) -> Image.Image:
-	"""
-	Render grain only on luminance channel, preserving color information.
-	"""
-	img_array = np.array(pil_image, dtype=np.float32) / 255.0
-	
-	if len(img_array.shape) == 2:
-		# Already grayscale
-		output = renderer.render_single_channel(img_array, zoom=1.0, output_size=None)
-		output = np.stack([output] * 3, axis=2)
-	else:
-		# Convert RGB to YUV
-		img_uint8 = (img_array * 255).astype(np.uint8)
-		yuv = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2YUV).astype(np.float32) / 255.0
-		
-		# Render grain on Y (luminance) channel only
-		y_rendered = renderer.render_single_channel(yuv[:, :, 0], zoom=1.0, output_size=None)
-		yuv[:, :, 0] = y_rendered
-		
-		# Convert back to RGB
-		yuv_uint8 = (np.clip(yuv * 255.0, 0, 255)).astype(np.uint8)
-		output = cv2.cvtColor(yuv_uint8, cv2.COLOR_YUV2RGB)
-		return Image.fromarray(output)
-	
-	# Clip and convert to uint8
-	output = np.clip(output * 255.0, 0, 255).astype(np.uint8)
-	return Image.fromarray(output)
-
-def render_rgb_mode(pil_image: Image.Image, renderer: FilmGrainRenderer, show_progress: bool = True) -> Image.Image:
-	"""
-	Render grain independently on each RGB channel.
-	"""
-	img_array = np.array(pil_image, dtype=np.float32) / 255.0
-	
-	if len(img_array.shape) == 2:
-		# Grayscale - process once, copy to RGB
-		output = renderer.render_single_channel(img_array, zoom=1.0, output_size=None)
-		output = np.stack([output] * 3, axis=2)
-	else:
-		# Process each channel independently
-		channels = []
-		channel_names = ['Red', 'Green', 'Blue']
-		for c in range(3):
-			if show_progress:
-				console.print(f"  [cyan]Processing {channel_names[c]} channel ({c + 1}/3)...[/cyan]")
-			rendered = renderer.render_single_channel(img_array[:, :, c], zoom=1.0, output_size=None)
-			channels.append(rendered)
-		output = np.stack(channels, axis=2)
-	
-	# Clip and convert to uint8
-	output = np.clip(output * 255.0, 0, 255).astype(np.uint8)
-	return Image.fromarray(output)
 
 def main() -> int:
 	"""Main CLI entry point for single image processing"""
@@ -205,17 +150,14 @@ Presets:
 	console.print(Panel(config_table, title="[bold]Film Grain Rendering[/bold]", border_style="blue"))
 	console.print()
 	
-	# Render based on mode
+	# Render with film grain
 	start_time = time.time()
 	
 	try:
-		if args.mode == 'luminance':
-			with Progress(SpinnerColumn(), TextColumn("[cyan]Rendering grain on luminance channel...[/cyan]"), console=console) as progress:
-				progress.add_task("render", total=None)
-				output = render_luminance_mode(image, renderer)
-		else:  # rgb
-			console.print("[cyan]Rendering grain on RGB channels:[/cyan]")
-			output = render_rgb_mode(image, renderer, show_progress=True)
+		mode_text = "luminance channel" if args.mode == 'luminance' else "RGB channels"
+		with Progress(SpinnerColumn(), TextColumn(f"[cyan]Rendering grain on {mode_text}...[/cyan]"), console=console) as progress:
+			progress.add_task("render", total=None)
+			output = renderer.process_image(image, mode=args.mode, strength=args.strength)
 		
 		render_time = time.time() - start_time
 	
@@ -224,19 +166,6 @@ Presets:
 		import traceback
 		traceback.print_exc()
 		return 1
-	
-	# Blend with original if strength < 1.0
-	if args.strength < 1.0:
-		with Progress(SpinnerColumn(), TextColumn(f"[cyan]Blending at strength {args.strength:.2f}...[/cyan]"), console=console) as progress:
-			progress.add_task("blend", total=None)
-			original_array = np.array(image, dtype=np.float32)
-			output_array = np.array(output, dtype=np.float32)
-			
-			stacked = np.stack([original_array, output_array])
-			weights = (1.0 - args.strength, args.strength)
-			blended = np.average(stacked, axis=0, weights=weights)
-			blended = np.clip(blended, 0, 255).astype(np.uint8)
-			output = Image.fromarray(blended)
 	
 	# Save output
 	console.print(f"[cyan]Saving to[/cyan] [bright_yellow]{escape(output_path.name)}[/bright_yellow]...")

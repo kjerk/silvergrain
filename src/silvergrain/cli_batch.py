@@ -2,10 +2,7 @@ import argparse
 import sys
 import time
 from pathlib import Path
-from typing import Tuple
 
-import cv2
-import numpy as np
 from PIL import Image
 from rich.console import Console
 from rich.markup import escape
@@ -20,66 +17,6 @@ SilverGrain Batch CLI - Batch process directories of images
 """
 
 console = Console()
-
-def process_image(input_path: Path, output_path: Path, renderer, mode: str, strength: float) -> Tuple[bool, str]:
-	"""Process a single image, return (success, error_message)"""
-	try:
-		# Load image
-		image = Image.open(input_path)
-		
-		# Convert to RGB if needed
-		if image.mode not in ['L', 'RGB']:
-			image = image.convert('RGB')
-		
-		# Render
-		img_array = np.array(image, dtype=np.float32) / 255.0
-		
-		if mode == 'luminance':
-			# Luminance mode
-			if len(img_array.shape) == 2:
-				output_array = renderer.render_single_channel(img_array, zoom=1.0, output_size=None)
-				output_array = np.stack([output_array] * 3, axis=2)
-			else:
-				img_uint8 = (img_array * 255).astype(np.uint8)
-				yuv = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2YUV).astype(np.float32) / 255.0
-				y_rendered = renderer.render_single_channel(yuv[:, :, 0], zoom=1.0, output_size=None)
-				yuv[:, :, 0] = y_rendered
-				yuv_uint8 = (np.clip(yuv * 255.0, 0, 255)).astype(np.uint8)
-				output_array = cv2.cvtColor(yuv_uint8, cv2.COLOR_YUV2RGB).astype(np.float32)
-		else:
-			# RGB mode
-			if len(img_array.shape) == 2:
-				output_array = renderer.render_single_channel(img_array, zoom=1.0, output_size=None)
-				output_array = np.stack([output_array] * 3, axis=2)
-			else:
-				channels = []
-				for c in range(3):
-					rendered = renderer.render_single_channel(img_array[:, :, c], zoom=1.0, output_size=None)
-					channels.append(rendered)
-				output_array = np.stack(channels, axis=2)
-			output_array = output_array * 255.0
-		
-		# Blend if needed
-		if strength < 1.0:
-			original_array = np.array(image, dtype=np.float32)
-			if output_array.max() <= 1.0:
-				output_array = output_array * 255.0
-			
-			stacked = np.stack([original_array, output_array])
-			weights = (1.0 - strength, strength)
-			output_array = np.average(stacked, axis=0, weights=weights)
-		
-		# Convert to image
-		output_array = np.clip(output_array, 0, 255).astype(np.uint8)
-		output = Image.fromarray(output_array)
-		
-		# Save
-		output.save(output_path)
-		
-		return True, ""
-	
-	except Exception as e:
-		return False, str(e)
 
 def main() -> int:
 	"""Main CLI entry point for batch processing"""
@@ -268,14 +205,15 @@ Presets:
 				# Output directory mode: preserve filename
 				output_path = output_dir / input_path.name
 			
-			# Process
-			success, error = process_image(input_path, output_path, renderer, args.mode, args.strength)
-			
-			if success:
+			# Process image
+			try:
+				image = Image.open(input_path)
+				output = renderer.process_image(image, mode=args.mode, strength=args.strength)
+				output.save(output_path)
 				success_count += 1
-			else:
+			except Exception as e:
 				fail_count += 1
-				failed_images.append((input_path.name, error))
+				failed_images.append((input_path.name, str(e)))
 			
 			progress.advance(task)
 	
