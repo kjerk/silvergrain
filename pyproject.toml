@@ -1,28 +1,31 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "silvergrain"
-version = "0.4"
-description = "Physically-based film grain renderer image processing"
-readme = "README.md"
-requires-python = ">=3.1"
-license = {text = "MIT"}
+version = "0.5.0"
+description = "Physically-based film grain rendering with GPU acceleration"
+readme = {file = "README.md", content-type = "text/markdown"}
+requires-python = ">=3.8"
+license = {text = "AGPL-3.0-or-later"}
 authors = [
-    {name = "SilverGrain Contributors"}
+    {name = "kjerk@github"}
 ]
-keywords = ["film-grain", "image-processing", "gpu"]
+keywords = ["film-grain", "image-processing", "gpu", "monte-carlo", "photography", "cuda"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Topic :: Multimedia :: Graphics",
     "Topic :: Scientific/Engineering :: Image Processing",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
 
 dependencies = [
@@ -50,7 +53,9 @@ silvergrain-augment = "silvergrain.cli_augment:main"
 
 [project.urls]
 Homepage = "https://github.com/kjerk/silvergrain"
+Repository = "https://github.com/kjerk/silvergrain"
 Issues = "https://github.com/kjerk/silvergrain/issues"
+Changelog = "https://github.com/kjerk/silvergrain/releases"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
