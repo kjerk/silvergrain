@@ -1,0 +1,71 @@
+name: DEPLOY - Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to publish (e.g., v0.5.0)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Do a dry run only (default: true; no publish happens unless set to false)'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      publish_to_pypi:
+        description: 'Actually publish to production PyPI? (default: false; publishes to Test PyPI only)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+jobs:
+  publish-to-pypi:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: SETUP - Set up Python 3
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: SETUP - Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.8"
+
+      - name: SETUP - Download release artifacts
+        run: |
+          mkdir -p dist
+          gh release download -D dist ${{ inputs.release_tag }} --repo "$GITHUB_REPOSITORY" --pattern "*.whl" --pattern "*.tar.gz"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: DEBUG - List working files
+        run: |
+          echo "Files present in working dir"
+          ls -lR .
+
+      # Test PyPI publish (only if NOT dry run and NOT publish to pypi)
+      - name: DEPLOY - Publish to Test PyPI
+        if: ${{ inputs.dry_run == 'false' && inputs.publish_to_pypi == 'false' }}
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.API_TOKEN_PYPI_TEST }}
+        run: uv publish --publish-url https://test.pypi.org/legacy/
+
+      # Prod PyPI publish (only if NOT dry run and DO publish to pypi)
+      - name: DEPLOY - Publish to PyPI
+        if: ${{ inputs.dry_run == 'false' && inputs.publish_to_pypi == 'true' }}
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.API_TOKEN_PYPI_PROD }}
+        run: uv publish
+
+      # Dry run info
+      - name: DRY RUN - Skip publish (default)
+        if: ${{ inputs.dry_run == 'true' }}
+        run: echo "Dry run mode enabled. Skipping all publish steps."

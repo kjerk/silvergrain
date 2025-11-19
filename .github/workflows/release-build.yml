@@ -1,0 +1,49 @@
+name: BUILD - Create Release Build
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-packages:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SETUP - Set up Python 3
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: SETUP - Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.8"
+
+      - name: BUILD - Update version in pyproject.toml
+        run: |
+          # Strip 'v' prefix from tag if present
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "Setting version to $VERSION (from $GITHUB_REF_NAME)"
+
+          sed -i "s/version = \".*\"/version = \"$VERSION\"/" pyproject.toml
+          cat pyproject.toml | grep version
+
+      - name: BUILD - Build wheel and sdist with uv
+        run: uv build
+
+      - name: DEBUG - List built artifacts
+        run: ls -la dist/
+
+      - name: DEPLOY - Upload files to release
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          gh release upload ${{ github.ref_name }} dist/*.whl dist/*.tar.gz --clobber
+          cp pyproject.toml pyproject-$VERSION.toml
+          gh release upload ${{ github.ref_name }} pyproject-$VERSION.toml --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
