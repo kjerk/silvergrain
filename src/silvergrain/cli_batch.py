@@ -10,7 +10,8 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 from rich.table import Table
 
-from silvergrain import FilmGrainRenderer, file_tools
+from silvergrain import FilmGrainRenderer
+from silvergrain.tools import file_tools
 
 """
 SilverGrain Batch CLI - Batch process directories of images

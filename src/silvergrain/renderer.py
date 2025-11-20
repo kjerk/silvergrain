@@ -5,7 +5,7 @@ import cv2
 import numpy
 from PIL import Image
 
-from silvergrain.image_processing import blend_images
+from silvergrain.tools.image_tools import blend_images
 
 """
 Film Grain Renderer - Public API
