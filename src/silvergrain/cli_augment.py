@@ -3,7 +3,7 @@ import random
 import sys
 import time
 from pathlib import Path
-from typing import Union
+from typing import Tuple, Union
 
 from PIL import Image
 from rich.console import Console
@@ -19,6 +19,128 @@ SilverGrain Augment CLI - Generate augmented image datasets
 """
 
 console = Console()
+
+def get_save_kwargs(output_path: Path) -> dict:
+	"""Get appropriate save kwargs based on output file format"""
+	ext = output_path.suffix.lower()
+
+	if ext in ['.jpg', '.jpeg']:
+		return {'quality': 98, 'optimize': True}
+	elif ext == '.png':
+		return {'compress_level': 3, 'optimize': True}
+	else:
+		# For other formats, use reasonable defaults
+		return {'optimize': True}
+
+def render_help():
+	"""Render beautiful custom help output using Rich"""
+	# Use 80 chars or console width, whichever is smaller
+	help_width = min(80, console.width)
+	help_console = Console(width=help_width)
+
+	# Header
+	help_console.print()
+	help_console.print(Panel.fit(
+		"[bold cyan]SilverGrain Augment[/bold cyan]\n"
+		"Generate augmented datasets with film grain variations",
+		border_style="cyan"
+	))
+	help_console.print()
+
+	# Quick Start
+	quick_start = Table.grid(padding=(0, 2))
+	quick_start.add_column(style="dim")
+	quick_start.add_row("silvergrain-augment input_dir/ output_dir/ --count 5")
+	quick_start.add_row("silvergrain-augment input_dir/ output_dir/ --count 10 \\")
+	quick_start.add_row("    --grain-radius 0.08:0.20")
+
+	help_console.print(Panel(quick_start, title="[bold]Quick Start[/bold]", border_style="green"))
+	help_console.print()
+
+	# Range Syntax
+	range_syntax = Table.grid(padding=(0, 1))
+	range_syntax.add_column(style="cyan", width=20)
+	range_syntax.add_column(style="white")
+	range_syntax.add_row("[bold]Fixed value:[/bold]", "--grain-radius 0.12")
+	range_syntax.add_row("", "[dim]Same value for all variants[/dim]")
+	range_syntax.add_row("", "")
+	range_syntax.add_row("[bold]Range:[/bold]", "--grain-radius 0.08:0.20")
+	range_syntax.add_row("", "[dim]Random value per variant (uniform sampling)[/dim]")
+	range_syntax.add_row("", "")
+	range_syntax.add_row("[bold]Random mode:[/bold]", "--mode rand")
+	range_syntax.add_row("", "[dim]Randomly pick luminance or rgb per variant[/dim]")
+
+	help_console.print(Panel(range_syntax, title="[bold]Parameter Syntax[/bold]", border_style="magenta"))
+	help_console.print()
+
+	# Options
+	options = Table.grid(padding=(0, 1))
+	options.add_column(style="cyan", width=22)
+	options.add_column(style="white")
+
+	options.add_row("[bold]Required[/bold]", "")
+	options.add_row("  input_dir", "Directory containing clean images")
+	options.add_row("  output_dir", "Output directory for augmented datasets")
+	options.add_row("  --count", "Number of augmentation variants  [dim](default: 1)[/dim]")
+	options.add_row("", "")
+	options.add_row("[bold]Parameters (fixed or ranges)[/bold]", "")
+	options.add_row("  --grain-radius", "0.05-0.25  [dim](default: 0.12)[/dim]")
+	options.add_row("  --grain-variation", "0.0-1.0  [dim](default: 0.0)[/dim]")
+	options.add_row("  --strength", "0.0-1.0  [dim](default: 1.0)[/dim]")
+	options.add_row("  --sigma-filter", "float  [dim](default: 0.8)[/dim]")
+	options.add_row("  --samples", "int  [dim](overrides --quality)[/dim]")
+	options.add_row("", "")
+	options.add_row("[bold]Presets & Mode[/bold]", "")
+	options.add_row("  --quality", "fast | balanced | high  [dim](default: balanced)[/dim]")
+	options.add_row("  --mode", "luminance | rgb | rand  [dim](default: luminance)[/dim]")
+	options.add_row("", "")
+	options.add_row("[bold]Other[/bold]", "")
+	options.add_row("  --recursive", "Search subdirectories")
+	options.add_row("  --device", "auto | cpu | gpu  [dim](default: auto)[/dim]")
+
+	help_console.print(Panel(options, title="[bold]Options[/bold]", border_style="blue"))
+	help_console.print()
+
+	# Output Structure
+	output_structure = Table.grid(padding=(0, 0))
+	output_structure.add_column(style="dim")
+	output_structure.add_row("output_dir/")
+	output_structure.add_row("├── aug_0/")
+	output_structure.add_row("│   ├── image_001.png")
+	output_structure.add_row("│   ├── image_002.png")
+	output_structure.add_row("│   └── ...")
+	output_structure.add_row("├── aug_1/")
+	output_structure.add_row("│   ├── image_001.png")
+	output_structure.add_row("│   └── ...")
+	output_structure.add_row("└── ...")
+
+	help_console.print(Panel(output_structure, title="[bold]Output Structure[/bold]", border_style="yellow"))
+	help_console.print()
+
+	# Examples
+	examples = Table.grid(padding=(0, 0))
+	examples.add_column(style="white")
+
+	examples.add_row("[dim]# Generate 5 variants with random grain radius[/dim]")
+	examples.add_row("[green]silvergrain-augment[/green] input/ output/ --count 5 --grain-radius 0.08:0.20")
+	examples.add_row("")
+	examples.add_row("[dim]# High quality with multiple parameter ranges[/dim]")
+	examples.add_row("[green]silvergrain-augment[/green] input/ output/ --count 20 \\")
+	examples.add_row("    --quality high \\")
+	examples.add_row("    --grain-radius 0.08:0.15 \\")
+	examples.add_row("    --grain-variation 0.0:0.3 \\")
+	examples.add_row("    --strength 0.7:1.0")
+	examples.add_row("")
+	examples.add_row("[dim]# Random mode per variant[/dim]")
+	examples.add_row("[green]silvergrain-augment[/green] input/ output/ --count 10 --mode rand")
+
+	help_console.print(Panel(examples, title="[bold]Examples[/bold]", border_style="green"))
+	help_console.print()
+
+	# Footer
+	help_console.print("[dim]For single images, see: [cyan]silvergrain --help[/cyan][/dim]")
+	help_console.print("[dim]For batch processing, see: [cyan]silvergrain-batch --help[/cyan][/dim]")
+	help_console.print()
 
 def parse_param(value_str: str, param_type=float) -> Union[Tuple[str, float], Tuple[str, float, float]]:
 	"""Parse a parameter that can be fixed or a range.
@@ -43,42 +165,14 @@ def sample_param(param_spec: Union[Tuple[str, float], Tuple[str, float, float]])
 
 def main() -> int:
 	"""Main CLI entry point for dataset augmentation"""
+	# Check for help flag before parsing
+	if '--help' in sys.argv or '-h' in sys.argv:
+		render_help()
+		return 0
+
 	parser = argparse.ArgumentParser(
 		description='Generate augmented image datasets with film grain variations',
-		formatter_class=argparse.RawDescriptionHelpFormatter,
-		epilog="""
-Examples:
-  # Generate 5 augmentation variants with randomized grain radius
-  silvergrain-augment input_dir/ output_dir/ --count 5 --grain-radius 0.08:0.20
-
-  # Fixed strength, ranged grain, random mode per variant
-  silvergrain-augment input_dir/ output_dir/ --count 10 \\
-      --grain-radius 0.05:0.25 \\
-      --strength 0.9 \\
-      --mode rand
-
-  # High quality with parameter variation
-  silvergrain-augment input_dir/ output_dir/ --count 20 \\
-      --quality high \\
-      --grain-radius 0.08:0.15 \\
-      --grain-sigma 0.0:0.1 \\
-      --strength 0.7:1.0
-
-Output Structure:
-  output_dir/
-  ├── aug_0/
-  │   ├── image_001.png
-  │   ├── image_002.png
-  ├── aug_1/
-  │   ├── image_001.png
-  │   └── ...
-  └── ...
-
-Parameters:
-  Fixed value:  --grain-radius 0.12
-  Range:        --grain-radius 0.08:0.20 (uniform sampling per variant)
-  Mode options: luminance | rgb | rand (randomly pick per variant)
-        """
+		add_help=False  # Disable default help to use our custom one
 	)
 	
 	parser.add_argument('input_dir', type=str, help='Input directory containing clean images')
@@ -87,7 +181,8 @@ Parameters:
 	
 	# Parameter options (can be fixed or ranges)
 	parser.add_argument('--grain-radius', type=str, default='0.12', help='Grain radius: fixed (0.12) or range (0.08:0.20) (default: 0.12)')
-	parser.add_argument('--grain-sigma', type=str, default='0.0', help='Grain size variation: fixed or range (default: 0.0)')
+	parser.add_argument('--grain-variation', type=str, default='0.0', help='Grain size variation: 0.0 (uniform) to 1.0 (maximum), fixed or range (default: 0.0)')
+	parser.add_argument('--grain-sigma', type=str, default=None, help=argparse.SUPPRESS)  # Hidden advanced override
 	parser.add_argument('--sigma-filter', type=str, default='0.8', help='Anti-aliasing filter: fixed or range (default: 0.8)')
 	parser.add_argument('--strength', type=str, default='1.0', help='Grain strength: fixed or range (default: 1.0)')
 	parser.add_argument('--samples', type=str, help='Monte Carlo samples: fixed or range (overrides --quality)')
@@ -141,7 +236,17 @@ Parameters:
 	
 	# Parse parameter specifications
 	grain_radius_spec = parse_param(args.grain_radius, float)
-	grain_sigma_spec = parse_param(args.grain_sigma, float)
+
+	# Handle grain_sigma vs grain_variation
+	if args.grain_sigma is not None:
+		# Advanced user explicitly set grain-sigma
+		grain_sigma_spec = parse_param(args.grain_sigma, float)
+		grain_variation_spec = None
+	else:
+		# Use grain-variation (user-friendly parameter)
+		grain_variation_spec = parse_param(args.grain_variation, float)
+		grain_sigma_spec = None
+
 	sigma_filter_spec = parse_param(args.sigma_filter, float)
 	strength_spec = parse_param(args.strength, float)
 	
@@ -203,7 +308,10 @@ Parameters:
 			return f"[yellow]{spec[1]}:{spec[2]}[/yellow]"
 	
 	config_table.add_row("Grain radius:", format_param_spec(grain_radius_spec))
-	config_table.add_row("Grain sigma:", format_param_spec(grain_sigma_spec))
+	if grain_variation_spec is not None:
+		config_table.add_row("Grain variation:", format_param_spec(grain_variation_spec))
+	if grain_sigma_spec is not None:
+		config_table.add_row("Grain sigma:", format_param_spec(grain_sigma_spec))
 	config_table.add_row("Sigma filter:", format_param_spec(sigma_filter_spec))
 	config_table.add_row("Strength:", format_param_spec(strength_spec))
 	config_table.add_row("Samples:", format_param_spec(samples_spec))
@@ -238,7 +346,23 @@ Parameters:
 		for variant_idx in range(args.count):
 			# Sample parameters for this variant
 			grain_radius = sample_param(grain_radius_spec)
-			grain_sigma = sample_param(grain_sigma_spec)
+
+			# Calculate grain_sigma from grain_variation or use explicit override
+			if grain_sigma_spec is not None:
+				# Advanced user explicitly set grain-sigma
+				grain_sigma = sample_param(grain_sigma_spec)
+				# Warn if grain_sigma is high relative to grain_radius
+				sigma_ratio = grain_sigma / grain_radius
+				if sigma_ratio > 0.5 and variant_idx == 0:  # Only warn once
+					console.print(f"[yellow]Warning:[/yellow] Sampled --grain-sigma ({grain_sigma:.3f}) may exceed recommended limit", file=sys.stderr)
+			else:
+				# Calculate from grain-variation (user-friendly parameter)
+				grain_variation = sample_param(grain_variation_spec)
+				grain_sigma = grain_variation * 0.5 * grain_radius
+				# Warn if grain_variation is high
+				if grain_variation > 1.0 and variant_idx == 0:  # Only warn once
+					console.print(f"[yellow]Warning:[/yellow] Sampled --grain-variation ({grain_variation:.2f}) exceeds recommended limit (1.0)", file=sys.stderr)
+
 			sigma_filter = sample_param(sigma_filter_spec)
 			strength = sample_param(strength_spec)
 			n_samples = int(sample_param(samples_spec))
@@ -276,7 +400,8 @@ Parameters:
 				try:
 					image = Image.open(input_path)
 					output = renderer.process_image(image, mode=mode, strength=strength)
-					output.save(output_path)
+					save_kwargs = get_save_kwargs(output_path)
+					output.save(output_path, **save_kwargs)
 					success_count += 1
 				except Exception as e:
 					fail_count += 1

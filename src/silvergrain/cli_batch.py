@@ -18,34 +18,112 @@ SilverGrain Batch CLI - Batch process directories of images
 
 console = Console()
 
+def get_save_kwargs(output_path: Path) -> dict:
+	"""Get appropriate save kwargs based on output file format"""
+	ext = output_path.suffix.lower()
+
+	if ext in ['.jpg', '.jpeg']:
+		return {'quality': 98, 'optimize': True}
+	elif ext == '.png':
+		return {'compress_level': 3, 'optimize': True}
+	else:
+		# For other formats, use reasonable defaults
+		return {'optimize': True}
+
+def render_help():
+	"""Render beautiful custom help output using Rich"""
+	# Use 80 chars or console width, whichever is smaller
+	help_width = min(80, console.width)
+	help_console = Console(width=help_width)
+
+	# Header
+	help_console.print()
+	help_console.print(Panel.fit(
+		"[bold cyan]SilverGrain Batch[/bold cyan]\n"
+		"Batch apply film grain to directories of images",
+		border_style="cyan"
+	))
+	help_console.print()
+
+	# Quick Start
+	quick_start = Table.grid(padding=(0, 2))
+	quick_start.add_column(style="dim")
+	quick_start.add_row("silvergrain-batch input_dir/")
+	quick_start.add_row("silvergrain-batch input_dir/ output_dir/")
+	quick_start.add_row("silvergrain-batch input_dir/ --intensity heavy --quality fast")
+
+	help_console.print(Panel(quick_start, title="[bold]Quick Start[/bold]", border_style="green"))
+	help_console.print()
+
+	# Usage Pattern
+	usage = Table.grid(padding=(0, 1))
+	usage.add_column(style="cyan")
+	usage.add_column(style="white")
+	usage.add_row("[bold]Input only:[/bold]", "Saves in-place with -grainy suffix")
+	usage.add_row("", "[dim]silvergrain-batch photos/[/dim]")
+	usage.add_row("", "")
+	usage.add_row("[bold]Input + Output:[/bold]", "Saves to output directory")
+	usage.add_row("", "[dim]silvergrain-batch photos/ processed/[/dim]")
+
+	help_console.print(Panel(usage, title="[bold]Usage Patterns[/bold]", border_style="blue"))
+	help_console.print()
+
+	# Options
+	options = Table.grid(padding=(0, 1))
+	options.add_column(style="cyan", width=20)
+	options.add_column(style="white")
+
+	options.add_row("[bold]Basic Options[/bold]", "")
+	options.add_row("  --intensity", "fine | medium | heavy  [dim](default: medium)[/dim]")
+	options.add_row("  --quality", "fast | balanced | high  [dim](default: balanced)[/dim]")
+	options.add_row("  --mode", "luminance | rgb  [dim](default: luminance)[/dim]")
+	options.add_row("  --strength", "0.0-1.0  [dim](default: 1.0)[/dim]")
+	options.add_row("  --recursive", "Search subdirectories")
+	options.add_row("  --random-seed", "Different seed per image (for augmentation)")
+	options.add_row("", "")
+	options.add_row("[bold]Advanced Options[/bold]", "")
+	options.add_row("  --grain-variation", "0.0-1.0  [dim]Grain size randomness[/dim]")
+	options.add_row("  --device", "auto | cpu | gpu  [dim](default: auto)[/dim]")
+	options.add_row("  --grain-radius", "float  [dim]Manual grain size (0.05-0.25)[/dim]")
+	options.add_row("  --samples", "int  [dim]Manual sample count (100-800)[/dim]")
+
+	help_console.print(Panel(options, title="[bold]Options[/bold]", border_style="blue"))
+	help_console.print()
+
+	# Examples
+	examples = Table.grid(padding=(0, 0))
+	examples.add_column(style="white")
+
+	examples.add_row("[dim]# Process all images in directory (in-place)[/dim]")
+	examples.add_row("[green]silvergrain-batch[/green] photos/")
+	examples.add_row("")
+	examples.add_row("[dim]# Process to separate output directory[/dim]")
+	examples.add_row("[green]silvergrain-batch[/green] photos/ processed/")
+	examples.add_row("")
+	examples.add_row("[dim]# Heavy grain, fast, search recursively[/dim]")
+	examples.add_row("[green]silvergrain-batch[/green] photos/ --intensity heavy --quality fast --recursive")
+	examples.add_row("")
+	examples.add_row("[dim]# Different grain per image (for augmentation)[/dim]")
+	examples.add_row("[green]silvergrain-batch[/green] dataset/ output/ --random-seed")
+
+	help_console.print(Panel(examples, title="[bold]Examples[/bold]", border_style="green"))
+	help_console.print()
+
+	# Footer
+	help_console.print("[dim]For single images, see: [cyan]silvergrain --help[/cyan][/dim]")
+	help_console.print("[dim]For dataset augmentation, see: [cyan]silvergrain-augment --help[/cyan][/dim]")
+	help_console.print()
+
 def main() -> int:
 	"""Main CLI entry point for batch processing"""
+	# Check for help flag before parsing
+	if '--help' in sys.argv or '-h' in sys.argv:
+		render_help()
+		return 0
+
 	parser = argparse.ArgumentParser(
 		description='Batch apply film grain to directory of images',
-		formatter_class=argparse.RawDescriptionHelpFormatter,
-		epilog="""
-Examples:
-  # Process all images in directory (in-place with -grainy suffix)
-  silvergrain-batch input_dir/
-
-  # Process to separate output directory
-  silvergrain-batch input_dir/ output_dir/
-
-  # Heavy grain with fast quality
-  silvergrain-batch input_dir/ --intensity heavy --quality fast
-
-  # Search subdirectories recursively
-  silvergrain-batch input_dir/ --recursive
-
-  # Randomize grain per image (different seed for each)
-  silvergrain-batch input_dir/ --random-seed
-
-Presets:
-  Intensity: fine (subtle) | medium (default) | heavy (strong)
-  Quality:   fast | balanced (default) | high
-  Mode:      luminance (default) | rgb
-  Device:    auto (default, uses GPU if available) | cpu | gpu
-        """
+		add_help=False  # Disable default help to use our custom one
 	)
 	
 	parser.add_argument('input_dir', type=str, help='Input directory containing images')
@@ -65,7 +143,8 @@ Presets:
 	parser.add_argument('--device', type=str, choices=['auto', 'cpu', 'gpu'], default='auto', help='Device to use (default: auto)')
 	parser.add_argument('--grain-radius', type=float, help='Override grain radius (0.05-0.25)')
 	parser.add_argument('--samples', type=int, help='Override Monte Carlo samples (100-800)')
-	parser.add_argument('--grain-sigma', type=float, default=0.0, help='Grain size variation')
+	parser.add_argument('--grain-variation', type=float, default=0.0, help='Grain size variation: 0.0 (uniform) to 1.0 (maximum variation) (default: 0.0)')
+	parser.add_argument('--grain-sigma', type=float, default=None, help=argparse.SUPPRESS)  # Hidden advanced override
 	parser.add_argument('--sigma-filter', type=float, default=0.8, help='Anti-aliasing filter')
 	parser.add_argument('--seed', type=int, default=2016, help='Base random seed (default: 2016)')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
@@ -113,12 +192,37 @@ Presets:
 	
 	grain_radius = args.grain_radius if args.grain_radius else intensity_map[args.intensity]
 	n_samples = args.samples if args.samples else quality_map[args.quality]
-	
+
+	# Calculate grain_sigma from grain_variation or use explicit override
+	if args.grain_sigma is not None:
+		# Advanced user explicitly set grain-sigma
+		grain_sigma = args.grain_sigma
+		# Warn if grain_sigma is high relative to grain_radius
+		sigma_ratio = grain_sigma / grain_radius
+		if sigma_ratio > 0.5:
+			console.print(f"[yellow]Warning:[/yellow] --grain-sigma ({grain_sigma:.3f}) exceeds recommended limit (0.5 × grain_radius = {0.5 * grain_radius:.3f})", file=sys.stderr)
+			console.print(f"[yellow]         This may cause significant slowdown. Recommended: --grain-sigma ≤ {0.5 * grain_radius:.3f}[/yellow]", file=sys.stderr)
+		elif sigma_ratio > 0.2:
+			console.print(f"[yellow]Note:[/yellow] --grain-sigma ({grain_sigma:.3f}) may significantly increase render time (~{int(sigma_ratio / 0.2 * 4)}× slower)", file=sys.stderr)
+	else:
+		# Calculate from grain-variation (user-friendly parameter)
+		grain_sigma = args.grain_variation * 0.5 * grain_radius
+		# Warn if grain_variation is high
+		if args.grain_variation > 1.0:
+			console.print(f"[yellow]Warning:[/yellow] --grain-variation ({args.grain_variation:.2f}) exceeds recommended limit (1.0)", file=sys.stderr)
+			console.print(f"[yellow]         This may cause significant slowdown and unrealistic results.[/yellow]", file=sys.stderr)
+		elif args.grain_variation > 0.4:
+			console.print(f"[yellow]Note:[/yellow] --grain-variation ({args.grain_variation:.2f}) may significantly increase render time", file=sys.stderr)
+
+	if args.grain_variation < 0.0:
+		console.print(f"[red]Error:[/red] --grain-variation must be non-negative, got {args.grain_variation}", file=sys.stderr)
+		return 1
+
 	# Create a test renderer to determine actual device (for display)
 	try:
 		test_renderer = FilmGrainRenderer(
 			grain_radius=grain_radius,
-			grain_sigma=args.grain_sigma,
+			grain_sigma=grain_sigma,
 			sigma_filter=args.sigma_filter,
 			n_monte_carlo=n_samples,
 			device=args.device,
@@ -149,6 +253,8 @@ Presets:
 	
 	if args.strength < 1.0:
 		config_table.add_row("Strength:", f"{args.strength:.2f}")
+	if args.grain_variation > 0.0:
+		config_table.add_row("Grain variation:", f"{args.grain_variation:.2f}")
 	if args.random_seed:
 		config_table.add_row("Random seeds:", "[yellow]enabled[/yellow]")
 	
@@ -189,7 +295,7 @@ Presets:
 			
 			renderer = FilmGrainRenderer(
 				grain_radius=grain_radius,
-				grain_sigma=args.grain_sigma,
+				grain_sigma=grain_sigma,
 				sigma_filter=args.sigma_filter,
 				n_monte_carlo=n_samples,
 				device=args.device,
@@ -209,7 +315,8 @@ Presets:
 			try:
 				image = Image.open(input_path)
 				output = renderer.process_image(image, mode=args.mode, strength=args.strength)
-				output.save(output_path)
+				save_kwargs = get_save_kwargs(output_path)
+				output.save(output_path, **save_kwargs)
 				success_count += 1
 			except Exception as e:
 				fail_count += 1
