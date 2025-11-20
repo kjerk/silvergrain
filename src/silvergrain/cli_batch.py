@@ -4,7 +4,6 @@ import time
 from pathlib import Path
 
 from PIL import Image
-from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
@@ -12,31 +11,16 @@ from rich.table import Table
 
 from silvergrain import FilmGrainRenderer
 from silvergrain.tools import file_tools
+from silvergrain.tools.image_tools import get_pil_save_kwargs
+from tools.print_tools import console, help_console
 
 """
 SilverGrain Batch CLI - Batch process directories of images
 """
 
-console = Console()
-
-def get_save_kwargs(output_path: Path) -> dict:
-	"""Get appropriate save kwargs based on output file format"""
-	ext = output_path.suffix.lower()
-
-	if ext in ['.jpg', '.jpeg']:
-		return {'quality': 98, 'optimize': True}
-	elif ext == '.png':
-		return {'compress_level': 3, 'optimize': True}
-	else:
-		# For other formats, use reasonable defaults
-		return {'optimize': True}
-
 def render_help():
 	"""Render beautiful custom help output using Rich"""
-	# Use 80 chars or console width, whichever is smaller
-	help_width = min(80, console.width)
-	help_console = Console(width=help_width)
-
+	
 	# Header
 	help_console.print()
 	help_console.print(Panel.fit(
@@ -45,17 +29,17 @@ def render_help():
 		border_style="cyan"
 	))
 	help_console.print()
-
+	
 	# Quick Start
 	quick_start = Table.grid(padding=(0, 2))
 	quick_start.add_column(style="dim")
 	quick_start.add_row("silvergrain-batch input_dir/")
 	quick_start.add_row("silvergrain-batch input_dir/ output_dir/")
 	quick_start.add_row("silvergrain-batch input_dir/ --intensity heavy --quality fast")
-
+	
 	help_console.print(Panel(quick_start, title="[bold]Quick Start[/bold]", border_style="green"))
 	help_console.print()
-
+	
 	# Usage Pattern
 	usage = Table.grid(padding=(0, 1))
 	usage.add_column(style="cyan")
@@ -65,15 +49,15 @@ def render_help():
 	usage.add_row("", "")
 	usage.add_row("[bold]Input + Output:[/bold]", "Saves to output directory")
 	usage.add_row("", "[dim]silvergrain-batch photos/ processed/[/dim]")
-
+	
 	help_console.print(Panel(usage, title="[bold]Usage Patterns[/bold]", border_style="blue"))
 	help_console.print()
-
+	
 	# Options
 	options = Table.grid(padding=(0, 1))
 	options.add_column(style="cyan", width=20)
 	options.add_column(style="white")
-
+	
 	options.add_row("[bold]Basic Options[/bold]", "")
 	options.add_row("  --intensity", "fine | medium | heavy  [dim](default: medium)[/dim]")
 	options.add_row("  --quality", "fast | balanced | high  [dim](default: balanced)[/dim]")
@@ -87,14 +71,14 @@ def render_help():
 	options.add_row("  --device", "auto | cpu | gpu  [dim](default: auto)[/dim]")
 	options.add_row("  --grain-radius", "float  [dim]Manual grain size (0.05-0.25)[/dim]")
 	options.add_row("  --samples", "int  [dim]Manual sample count (100-800)[/dim]")
-
+	
 	help_console.print(Panel(options, title="[bold]Options[/bold]", border_style="blue"))
 	help_console.print()
-
+	
 	# Examples
 	examples = Table.grid(padding=(0, 0))
 	examples.add_column(style="white")
-
+	
 	examples.add_row("[dim]# Process all images in directory (in-place)[/dim]")
 	examples.add_row("[green]silvergrain-batch[/green] photos/")
 	examples.add_row("")
@@ -106,22 +90,16 @@ def render_help():
 	examples.add_row("")
 	examples.add_row("[dim]# Different grain per image (for augmentation)[/dim]")
 	examples.add_row("[green]silvergrain-batch[/green] dataset/ output/ --random-seed")
-
+	
 	help_console.print(Panel(examples, title="[bold]Examples[/bold]", border_style="green"))
 	help_console.print()
-
+	
 	# Footer
 	help_console.print("[dim]For single images, see: [cyan]silvergrain --help[/cyan][/dim]")
 	help_console.print("[dim]For dataset augmentation, see: [cyan]silvergrain-augment --help[/cyan][/dim]")
 	help_console.print()
 
-def main() -> int:
-	"""Main CLI entry point for batch processing"""
-	# Check for help flag before parsing
-	if '--help' in sys.argv or '-h' in sys.argv:
-		render_help()
-		return 0
-
+def parse_arguments() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(
 		description='Batch apply film grain to directory of images',
 		add_help=False  # Disable default help to use our custom one
@@ -151,6 +129,17 @@ def main() -> int:
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
 	
 	args = parser.parse_args()
+	
+	return args
+
+def main() -> int:
+	"""Main CLI entry point for batch processing"""
+	# Check for help flag before parsing
+	if '--help' in sys.argv or '-h' in sys.argv:
+		render_help()
+		return 0
+	
+	args = parse_arguments()
 	
 	# Validate directories
 	input_dir = Path(args.input_dir)
@@ -193,7 +182,7 @@ def main() -> int:
 	
 	grain_radius = args.grain_radius if args.grain_radius else intensity_map[args.intensity]
 	n_samples = args.samples if args.samples else quality_map[args.quality]
-
+	
 	# Calculate grain_sigma from grain_variation or use explicit override
 	if args.grain_sigma is not None:
 		# Advanced user explicitly set grain-sigma
@@ -214,11 +203,11 @@ def main() -> int:
 			console.print(f"[yellow]         This may cause significant slowdown and unrealistic results.[/yellow]", file=sys.stderr)
 		elif args.grain_variation > 0.4:
 			console.print(f"[yellow]Note:[/yellow] --grain-variation ({args.grain_variation:.2f}) may significantly increase render time", file=sys.stderr)
-
+	
 	if args.grain_variation < 0.0:
 		console.print(f"[red]Error:[/red] --grain-variation must be non-negative, got {args.grain_variation}", file=sys.stderr)
 		return 1
-
+	
 	# Create a test renderer to determine actual device (for display)
 	try:
 		test_renderer = FilmGrainRenderer(
@@ -316,7 +305,7 @@ def main() -> int:
 			try:
 				image = Image.open(input_path)
 				output = renderer.process_image(image, mode=args.mode, strength=args.strength)
-				save_kwargs = get_save_kwargs(output_path)
+				save_kwargs = get_pil_save_kwargs(output_path)
 				output.save(output_path, **save_kwargs)
 				success_count += 1
 			except Exception as e:

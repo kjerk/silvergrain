@@ -4,41 +4,25 @@ import time
 from pathlib import Path
 
 from PIL import Image
-from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from silvergrain import FilmGrainRenderer
+from silvergrain.tools.image_tools import get_pil_save_kwargs
+from tools.print_tools import console, help_console
 
 """
 SilverGrain CLI - Single image film grain rendering
 """
 
-console = Console()
-
 # Default suffix for auto-generated output filenames
 DEFAULT_AUTONAME_SUFFIX = "-grainy"
 
-def get_save_kwargs(output_path: Path) -> dict:
-	"""Get appropriate save kwargs based on output file format"""
-	ext = output_path.suffix.lower()
-
-	if ext in ['.jpg', '.jpeg']:
-		return {'quality': 98, 'optimize': True}
-	elif ext == '.png':
-		return {'compress_level': 3, 'optimize': True}
-	else:
-		# For other formats, use reasonable defaults
-		return {'optimize': True}
-
 def render_help():
 	"""Render beautiful custom help output using Rich"""
-	# Use 80 chars or console width, whichever is smaller
-	help_width = min(80, console.width)
-	help_console = Console(width=help_width)
-
+	
 	# Header
 	help_console.print()
 	help_console.print(Panel.fit(
@@ -47,45 +31,45 @@ def render_help():
 		border_style="cyan"
 	))
 	help_console.print()
-
+	
 	# Quick Start
 	quick_start = Table.grid(padding=(0, 2))
 	quick_start.add_column(style="dim")
 	quick_start.add_row("silvergrain input.jpg")
 	quick_start.add_row("silvergrain input.jpg output.jpg")
 	quick_start.add_row("silvergrain input.jpg --intensity heavy --grain-variation 0.3")
-
+	
 	help_console.print(Panel(quick_start, title="[bold]Quick Start[/bold]", border_style="green"))
 	help_console.print()
-
+	
 	# Basic Options
 	basic = Table.grid(padding=(0, 1))
 	basic.add_column(style="cyan", justify="left")
 	basic.add_column(style="white")
-
+	
 	basic.add_row("[bold]Intensity Presets[/bold]", "")
 	basic.add_row("  --intensity", "fine | medium | heavy")
 	basic.add_row("", "[dim]Default: medium[/dim]")
 	basic.add_row("", "")
-
+	
 	basic.add_row("[bold]Quality Presets[/bold]", "")
 	basic.add_row("  --quality", "fast | balanced | high")
 	basic.add_row("", "[dim]Default: balanced[/dim]")
 	basic.add_row("", "")
-
+	
 	basic.add_row("[bold]Grain Mode[/bold]", "")
 	basic.add_row("  --mode", "luminance | rgb")
 	basic.add_row("", "[dim]luminance: preserves color (recommended)[/dim]")
 	basic.add_row("", "[dim]rgb: per-channel grain (more intense)[/dim]")
 	basic.add_row("", "")
-
+	
 	basic.add_row("[bold]Blend Strength[/bold]", "")
 	basic.add_row("  --strength", "0.0-1.0")
 	basic.add_row("", "[dim]Blend between original (0.0) and full grain (1.0)[/dim]")
-
+	
 	help_console.print(Panel(basic, title="[bold]Basic Options[/bold]", border_style="blue"))
 	help_console.print()
-
+	
 	# Preset Reference Tables
 	intensity_table = Table(show_header=True, header_style="bold cyan", border_style="dim")
 	intensity_table.add_column("Intensity", style="cyan")
@@ -94,28 +78,28 @@ def render_help():
 	intensity_table.add_row("fine", "0.08", "Subtle texture, modern film")
 	intensity_table.add_row("medium", "0.12", "Classic film look [dim](default)[/dim]")
 	intensity_table.add_row("heavy", "0.20", "Vintage, high-ISO aesthetic")
-
+	
 	quality_table = Table(show_header=True, header_style="bold cyan", border_style="dim")
 	quality_table.add_column("Quality", style="cyan")
 	quality_table.add_column("Samples", justify="center")
 	quality_table.add_row("fast", "100")
 	quality_table.add_row("balanced", "200 [dim](default)[/dim]")
 	quality_table.add_row("high", "400")
-
+	
 	preset_grid = Table.grid(padding=(0, 2))
 	preset_grid.add_column()
 	preset_grid.add_column()
 	preset_grid.add_row(intensity_table, quality_table)
-
+	
 	help_console.print(Panel(preset_grid, title="[bold]Preset Reference[/bold]", border_style="magenta"))
 	help_console.print()
-
+	
 	# Advanced Options
 	advanced = Table.grid(padding=(0, 1))
 	advanced.add_column(style="yellow", width=20)
 	advanced.add_column(style="dim", width=10)
 	advanced.add_column(style="white")
-
+	
 	advanced.add_row("--grain-variation", "0.0-1.0", "Randomize grain sizes")
 	advanced.add_row("", "", "[dim]0.0 = uniform (fast)[/dim]")
 	advanced.add_row("", "", "[dim]0.3 = subtle variation[/dim]")
@@ -128,14 +112,14 @@ def render_help():
 	advanced.add_row("--samples", "int", "Manual sample count (100-800)")
 	advanced.add_row("--sigma-filter", "float", "Anti-aliasing filter (default: 0.8)")
 	advanced.add_row("--seed", "int", "Random seed (default: 2016)")
-
+	
 	help_console.print(Panel(advanced, title="[bold]Advanced Options[/bold]", border_style="yellow"))
 	help_console.print()
-
+	
 	# Examples
 	examples = Table.grid(padding=(0, 0))
 	examples.add_column(style="white")
-
+	
 	examples.add_row("[dim]# Basic usage (auto-named output: photo-grainy.png)[/dim]")
 	examples.add_row("[green]silvergrain[/green] photo.jpg")
 	examples.add_row("")
@@ -147,22 +131,16 @@ def render_help():
 	examples.add_row("")
 	examples.add_row("[dim]# Blend 50% with original[/dim]")
 	examples.add_row("[green]silvergrain[/green] photo.jpg --strength 0.5")
-
+	
 	help_console.print(Panel(examples, title="[bold]Examples[/bold]", border_style="green"))
 	help_console.print()
-
+	
 	# Footer
 	help_console.print("[dim]For batch processing, see: [cyan]silvergrain-batch --help[/cyan][/dim]")
 	help_console.print("[dim]For dataset augmentation, see: [cyan]silvergrain-augment --help[/cyan][/dim]")
 	help_console.print()
 
-def main() -> int:
-	"""Main CLI entry point for single image processing"""
-	# Check for help flag before parsing
-	if '--help' in sys.argv or '-h' in sys.argv:
-		render_help()
-		return 0
-
+def parse_arguments() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(
 		description='Apply physically-based film grain to images',
 		add_help=False  # Disable default help to use our custom one
@@ -188,13 +166,24 @@ def main() -> int:
 	
 	args = parser.parse_args()
 	
+	return args
+
+def main() -> int:
+	"""Main CLI entry point for single image processing"""
+	# Check for help flag before parsing
+	if '--help' in sys.argv or '-h' in sys.argv:
+		render_help()
+		return 0
+	
+	args = parse_arguments()
+	
 	# Presets for easier use
 	intensity_map = {'fine': 0.08, 'medium': 0.12, 'heavy': 0.20}
 	quality_map = {'fast': 100, 'balanced': 200, 'high': 400}
 	
 	grain_radius = args.grain_radius if args.grain_radius else intensity_map[args.intensity]
 	n_samples = args.samples if args.samples else quality_map[args.quality]
-
+	
 	# Calculate grain_sigma from grain_variation or use explicit override
 	if args.grain_sigma is not None:
 		# Advanced user explicitly set grain-sigma
@@ -215,12 +204,12 @@ def main() -> int:
 			console.print(f"[yellow]         This may cause significant slowdown and unrealistic results.[/yellow]", file=sys.stderr)
 		elif args.grain_variation > 0.4:
 			console.print(f"[yellow]Note:[/yellow] --grain-variation ({args.grain_variation:.2f}) may significantly increase render time", file=sys.stderr)
-
+	
 	# Validate inputs
 	if args.strength < 0.0 or args.strength > 1.0:
 		console.print(f"[red]Error:[/red] --strength must be between 0.0 and 1.0, got {args.strength}", file=sys.stderr)
 		return 1
-
+	
 	if args.grain_variation < 0.0:
 		console.print(f"[red]Error:[/red] --grain-variation must be non-negative, got {args.grain_variation}", file=sys.stderr)
 		return 1
@@ -229,14 +218,14 @@ def main() -> int:
 	if not input_path.exists():
 		console.print(f"[red]Error:[/red] Input file [bright_yellow]{escape(str(input_path))}[/bright_yellow] not found", file=sys.stderr)
 		return 1
-
+	
 	# Determine output path
 	if args.output is None:
 		# Auto-generate output filename
 		output_path = input_path.parent / f"{input_path.stem}{DEFAULT_AUTONAME_SUFFIX}.png"
 	else:
 		output_path = Path(args.output)
-
+	
 	# Check for overwrite
 	if output_path.exists():
 		response = console.input(f"[yellow]Output file [bright_yellow]{escape(str(output_path))}[/bright_yellow] exists. Overwrite? [y/N][/yellow] ")
@@ -290,10 +279,10 @@ def main() -> int:
 	
 	if args.strength < 1.0:
 		config_table.add_row("Strength:", f"{args.strength:.2f}")
-
+	
 	if args.grain_variation > 0.0:
 		config_table.add_row("Grain variation:", f"{args.grain_variation:.2f}")
-
+	
 	if args.grain_radius or args.samples or args.grain_sigma is not None:
 		config_table.add_row("", "")
 		config_table.add_row("[dim]Advanced:[/dim]", "")
@@ -327,9 +316,9 @@ def main() -> int:
 	
 	# Save output
 	console.print(f"[cyan]Saving to[/cyan] [bright_yellow]{escape(output_path.name)}[/bright_yellow]...")
-
+	
 	try:
-		save_kwargs = get_save_kwargs(output_path)
+		save_kwargs = get_pil_save_kwargs(output_path)
 		output.save(output_path, **save_kwargs)
 	except Exception as e:
 		console.print(f"[red]Error saving image:[/red] {e}", file=sys.stderr)
