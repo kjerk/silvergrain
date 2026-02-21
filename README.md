@@ -1,5 +1,12 @@
 # SilverGrain
 
+[![CI](https://github.com/kjerk/silvergrain/actions/workflows/on-push-validation.yml/badge.svg)](https://github.com/kjerk/silvergrain/actions/workflows/on-push-validation.yml)
+[![Release](https://img.shields.io/github/v/release/kjerk/silvergrain)](https://github.com/kjerk/silvergrain/releases/latest)
+[![PyPI](https://img.shields.io/pypi/v/silvergrain)](https://pypi.org/project/silvergrain/)
+[![Python](https://img.shields.io/pypi/pyversions/silvergrain)](https://pypi.org/project/silvergrain/)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![CUDA Accelerated](https://img.shields.io/badge/CUDA-accelerated-76B900?logo=nvidia)](https://github.com/kjerk/silvergrain)
+
 Physically-based film grain rendering for Python.
 
 SilverGrain implements the photographic grain simulation algorithm from [Newson et al. (2017)](https://doi.org/10.5201/ipol.2017.192), making it accessible as a friendly Python library and CLI tool. Unlike simple noise overlays, this approach models grain as a stochastic geometric process based on the actual physics of silver halide crystals in analog film.
