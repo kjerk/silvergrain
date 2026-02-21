@@ -384,4 +384,5 @@ def check_grain_renderer():
 	print("\nRenderer is ready to use!")
 
 if __name__ == "__main__":
-	check_grain_renderer()
+	# check_grain_renderer()
+	print('__main__ not supported in modules.')
