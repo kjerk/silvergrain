@@ -45,6 +45,7 @@ jobs:
         run: ls -la dist/
 
       - name: PROVENANCE - Attest build artifacts
+        id: attestation
         uses: actions/attest-build-provenance@v3
         with:
           subject-path: 'dist/*.whl, dist/*.tar.gz'
@@ -55,5 +56,26 @@ jobs:
           gh release upload ${{ github.ref_name }} dist/*.whl dist/*.tar.gz dist/checksums-sha256.txt --clobber
           cp pyproject.toml pyproject-$VERSION.toml
           gh release upload ${{ github.ref_name }} pyproject-$VERSION.toml --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: DEPLOY - Append attestation to release notes
+        run: |
+          EXISTING_BODY=$(gh release view ${{ github.ref_name }} --json body -q .body)
+          if echo "$EXISTING_BODY" | grep -q '/attestations/'; then
+            echo "Attestation link already present in release notes, skipping."
+          else
+            UPDATED_BODY=$(cat <<EOF
+          ${EXISTING_BODY}
+
+          ---
+          ### Provenance
+          Build artifacts for this release have been signed with [GitHub Artifact Attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).
+          Verify with: \`gh attestation verify <artifact> --repo ${{ github.repository }}\`
+          [View attestation](${{ steps.attestation.outputs.attestation-url }})
+          EOF
+            )
+            gh release edit ${{ github.ref_name }} --notes "$UPDATED_BODY"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
