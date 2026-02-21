@@ -105,6 +105,10 @@ This is parallel—perfect for GPU acceleration. The CUDA implementation typical
 
 ### CLI Tools
 
+| `silvergrain` | `silvergrain-batch` |
+|:---:|:---:|
+| ![silvergrain CLI](docs/sg_cli_main_example.png) | ![silvergrain-batch CLI](docs/sg_cli_b_example.png) |
+
 #### `silvergrain` - Single Image Processing
 
 Apply grain to one image with full control over parameters:
