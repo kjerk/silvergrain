@@ -11,7 +11,7 @@ from rich.table import Table
 
 from silvergrain import FilmGrainRenderer
 from silvergrain.tools.image_tools import get_pil_save_kwargs
-from tools.print_tools import console, help_console
+from silvergrain.tools.print_tools import console, help_console
 
 """
 SilverGrain CLI - Single image film grain rendering
